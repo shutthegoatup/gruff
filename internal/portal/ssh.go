@@ -92,7 +92,7 @@ func (p *Portal) handleSSHIssue(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("attachment; filename=%q", "gruff-"+profile.Name+".sh"))
 	w.Header().Set("Cache-Control", "no-store")
 
-	if err := writeSSHInstaller(w, profile, id.Username, creds); err != nil {
+	if err := writeSSHInstaller(w, profile, id.Username, creds, p.sshCA.KnownHostsLine(profile.Hosts)); err != nil {
 		p.log.ErrorContext(r.Context(), "write ssh installer", "user", id.Username, "error", err)
 	}
 }

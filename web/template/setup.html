@@ -23,8 +23,17 @@
     <pre class="mt-2.5 overflow-x-auto border-2 border-ink bg-field p-3 font-mono text-xs">{{ .SSHDConfig }}</pre>
   </div>
 
+  <div class="border-b-2 border-ink p-4">
+    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">3 &mdash; Trust host certificates on clients</div>
+    <p class="mt-1 mb-2.5 text-sm">
+      Append this to <code class="bg-field px-1 font-mono text-xs">~/.ssh/known_hosts</code> and ssh
+      stops asking users to confirm a fingerprint they cannot check. The SSH download does this for you.
+    </p>
+    <pre class="overflow-x-auto border-2 border-ink bg-field p-3 font-mono text-xs">{{ .KnownHosts }}</pre>
+  </div>
+
   <div class="p-4">
-    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">3 &mdash; Permit the principals</div>
+    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">4 &mdash; Permit the principals</div>
     <p class="mt-1 mb-2.5 text-sm">
       A certificate may only log in as a principal listed for that account. Create one file
       per login:

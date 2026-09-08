@@ -162,8 +162,11 @@ config: |
     ca /etc/tls/ca/cert.pem
     cert /etc/tls/openvpn/cert.pem
     key /etc/tls/openvpn/key.pem
-    client-config-dir /tmp/gruff/profiles
-    ccd-exclusive
+    # Routes come from the client-connect hook, not client-config-dir: the
+    # certificate's common name is the user, so a ccd file cannot select a
+    # profile, and ccd-exclusive would refuse every client.
+    client-connect /tmp/gruff/profiles/rules/connect.sh
+    crl-verify /tmp/gruff/profiles/crl.pem
     server 10.100.10.0 255.255.255.0
     management 127.0.0.1 1234
     duplicate-cn

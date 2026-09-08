@@ -52,13 +52,16 @@ func (l *limiter) allow(key string, now time.Time) (bool, time.Duration) {
 	b.tokens = math.Min(l.perHour, b.tokens+now.Sub(b.last).Seconds()*perSecond)
 	b.last = now
 
+	// Sweep whichever way this goes: an instance refusing everyone still needs
+	// to drop the buckets it is no longer tracking anything for.
+	defer l.sweep(now)
+
 	if b.tokens < 1 {
 		wait := time.Duration((1 - b.tokens) / perSecond * float64(time.Second))
 		return false, wait.Round(time.Second)
 	}
 
 	b.tokens--
-	l.sweep(now)
 	return true, 0
 }
 

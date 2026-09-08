@@ -159,11 +159,16 @@ func (a *Authenticator) Complete(ctx context.Context, r *http.Request) (*http.Co
 	if err != nil {
 		return nil, "", err
 	}
+	// The session lasts as long as it is configured to. An ID token's exp
+	// bounds how long that assertion may be presented - already enforced above
+	// by Verify - not how long the session it produced should last. Providers
+	// issue them in minutes; Keycloak ships five, which would otherwise make
+	// session-lifetime a lie.
+	//
+	// Gruff does not re-check with the provider during a session, so that
+	// lifetime is also the window in which a disabled account still has
+	// access. It is capped at config.maxSessionLifetime for that reason.
 	user.Expires = time.Now().Add(a.cfg.SessionDuration())
-	// Never outlive the token that vouched for it.
-	if !idToken.Expiry.IsZero() && idToken.Expiry.Before(user.Expires) {
-		user.Expires = idToken.Expiry
-	}
 
 	cookie, err := a.sessions.Seal(user)
 	if err != nil {

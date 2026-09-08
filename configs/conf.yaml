@@ -33,6 +33,9 @@ auth:
   # redirect-url: https://gruff.example.com/auth/callback
   # roles-claim: groups
   # username-claim: preferred_username
+  # How long a signed-in session lasts. Gruff does not re-check with the
+  # provider during it, so this is also the window in which a disabled account
+  # still has access. Capped at 24h.
   # session-lifetime: 8h
   #
   # 32 random bytes; rotating this signs everyone out at once.

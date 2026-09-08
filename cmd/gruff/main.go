@@ -39,6 +39,15 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "sign-host":
+			return signHost(os.Args[2:])
+		case "sign-server":
+			return signServer(os.Args[2:])
+		}
+	}
+
 	var (
 		configPath  = flag.String("config", "configs/conf.yaml", "path to the config file")
 		generateCA  = flag.Bool("dev-generate-ca", false, "generate a throwaway CA at startup; for development only")
@@ -99,6 +108,12 @@ func run() error {
 	if err := p.PublishRevocations(context.Background()); err != nil {
 		return fmt.Errorf("publish revocation list: %w", err)
 	}
+
+	// Keep them current: an expired CRL refuses every client, not merely the
+	// revoked ones.
+	refresh, stopRefresh := context.WithCancel(context.Background())
+	defer stopRefresh()
+	go p.RefreshRevocations(refresh)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
