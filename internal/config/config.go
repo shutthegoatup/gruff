@@ -18,6 +18,7 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"unicode"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -182,6 +183,34 @@ var defaultExtensions = []string{"permit-pty", "permit-user-rc"}
 // principalName matches a POSIX-portable login name.
 var principalName = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
+// hostPattern matches what may appear after Host in an ssh_config: hostnames
+// and the wildcards ssh understands. Deliberately narrow, because a value that
+// reaches there reaches the user's own ~/.ssh/config.
+var hostPattern = regexp.MustCompile(`^[A-Za-z0-9!*?._-]{1,253}$`)
+
+// maxDescription bounds what is, after all, a label.
+const maxDescription = 200
+
+// validDescription rejects the control characters that would let a description
+// break out of the line it is written on.
+//
+// A description is operator-supplied, but it is delivered to a user and run on
+// their machine: it appears in the shell installer's header comment, where a
+// newline ends the comment and starts a command. The operator writing the
+// config and the person running the script are not the same party, so config
+// is not trusted at that boundary.
+func validDescription(s string) error {
+	if len(s) > maxDescription {
+		return fmt.Errorf("description is %d characters, over the %d limit", len(s), maxDescription)
+	}
+	for _, r := range s {
+		if !unicode.IsPrint(r) {
+			return fmt.Errorf("description contains %q, which is not printable", r)
+		}
+	}
+	return nil
+}
+
 // SSHProfile is a named grant of SSH access: which logins a certificate is
 // valid for, for how long, and who may ask for one.
 type SSHProfile struct {
@@ -223,6 +252,17 @@ func (p SSHProfile) validate() error {
 	for _, principal := range p.Principals {
 		if !principalName.MatchString(principal) {
 			return fmt.Errorf("principal %q must match %s", principal, principalName)
+		}
+	}
+	if err := validDescription(p.Description); err != nil {
+		return err
+	}
+	// A host reaches the Host line of a config fragment the installer writes
+	// into the user's ~/.ssh. A newline there is not a broken hostname, it is
+	// an extra ssh_config directive - ProxyCommand among them.
+	for _, host := range p.Hosts {
+		if !hostPattern.MatchString(host) {
+			return fmt.Errorf("host %q must match %s", host, hostPattern)
 		}
 	}
 	for _, ext := range p.Extensions {
@@ -480,6 +520,9 @@ func (p Profile) validate() error {
 	}
 	if len(p.Roles) == 0 {
 		return errors.New("no roles: a profile granting no roles is unreachable")
+	}
+	if err := validDescription(p.Description); err != nil {
+		return err
 	}
 	d := time.Duration(p.Duration)
 	if d <= 0 {
