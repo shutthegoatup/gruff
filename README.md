@@ -34,6 +34,14 @@ gruff sign-host -hostnames bastion.example.com \
   > /etc/ssh/ssh_host_ed25519_key-cert.pub
 ```
 
+**Server certificates.** `gruff sign-server` issues the certificate the OpenVPN
+server presents to clients. It needs the `serverAuth` usage a client certificate
+must not carry, so it cannot come through the portal:
+
+```sh
+gruff sign-server -cn vpn.example.com -hosts vpn.example.com -out /etc/openvpn
+```
+
 **Server configuration.** `/setup` shows exactly what your hosts need in order to
 trust Gruff — `TrustedUserCAKeys`, `AuthorizedPrincipalsFile`, the OpenVPN server
 directives — so a deployment outside the bundled chart has everything it needs. It
