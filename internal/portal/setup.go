@@ -99,22 +99,20 @@ func openvpnConfig(cfg *config.Config) string {
 
 	b.WriteString("ca /etc/openvpn/gruff-ca.pem\n")
 	b.WriteString("\n")
-	b.WriteString("# Gruff writes one file per profile here; ccd-exclusive refuses any\n")
-	b.WriteString("# client whose certificate does not match one of them.\n")
 
 	dir := cfg.ConfigdirPath
 	if dir == "" {
 		dir = "/var/lib/gruff/profiles"
 	}
-	fmt.Fprintf(&b, "client-config-dir %s\n", dir)
-	b.WriteString("ccd-exclusive\n")
-	b.WriteString("\n")
-	b.WriteString("# Revoked certificates. Gruff rewrites this on every revocation.\n")
-	fmt.Fprintf(&b, "crl-verify %s/crl.pem\n", dir)
-	b.WriteString("\n")
-	b.WriteString("# Firewall rules are applied per connection from the same directory.\n")
+
+	b.WriteString("# Routes come from this hook, not client-config-dir: the certificate's\n")
+	b.WriteString("# common name is the user, so a ccd file cannot select a profile. The\n")
+	b.WriteString("# hook reads the profile from the certificate and refuses anything else.\n")
 	b.WriteString("script-security 2\n")
 	fmt.Fprintf(&b, "client-connect %s/rules/connect.sh\n", dir)
+	b.WriteString("\n")
+	b.WriteString("# Revoked certificates. Gruff rewrites this hourly and on revocation.\n")
+	fmt.Fprintf(&b, "crl-verify %s/crl.pem\n", dir)
 
 	return b.String()
 }
