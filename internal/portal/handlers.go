@@ -89,6 +89,9 @@ func (p *Portal) handleIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if p.rateLimited(w, r, id.Username) {
+		return
+	}
 
 	creds, err := p.ca.Issue(id.Username, profile.Name, time.Duration(profile.Duration))
 	if err != nil {
@@ -189,4 +192,18 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// rateLimited reports whether the caller has spent their issuance budget, and
+// answers the request if so.
+func (p *Portal) rateLimited(w http.ResponseWriter, r *http.Request, user string) bool {
+	ok, wait := p.limiter.allow(user, time.Now())
+	if ok {
+		return false
+	}
+
+	p.log.WarnContext(r.Context(), "issuance rate limit reached", "user", user, "retry_after", wait)
+	w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())))
+	http.Error(w, "too many certificates issued recently; try again shortly", http.StatusTooManyRequests)
+	return true
 }

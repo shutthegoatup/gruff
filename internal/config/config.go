@@ -26,6 +26,10 @@ import (
 // valid, regardless of what a profile asks for.
 const MaxSessionDuration = 24 * time.Hour
 
+// defaultIssuesPerHour is generous for a person and still bounds a client
+// stuck in a loop.
+const defaultIssuesPerHour = 20
+
 const (
 	defaultListen         = "127.0.0.1:9000"
 	defaultFullnameHeader = "X-Auth-Fullname"
@@ -251,6 +255,9 @@ type Config struct {
 
 	SSHCAPrivateFile string `yaml:"ssh-ca-private-file"`
 
+	// IssuesPerHour caps issuance per user. Zero disables the limit.
+	IssuesPerHour *int `yaml:"issues-per-hour"`
+
 	ConfigdirEnabled bool   `yaml:"configdir-enabled"`
 	ConfigdirPath    string `yaml:"configdir-path"`
 
@@ -294,6 +301,14 @@ func (c *Config) Profile(name string) (Profile, error) {
 	return c.Profiles[i], nil
 }
 
+// IssueLimit is the per-user hourly cap; zero means unlimited.
+func (c *Config) IssueLimit() int {
+	if c.IssuesPerHour == nil {
+		return defaultIssuesPerHour
+	}
+	return *c.IssuesPerHour
+}
+
 // SSHProfile looks up an SSH profile by name.
 func (c *Config) SSHProfile(name string) (SSHProfile, error) {
 	i := slices.IndexFunc(c.SSHProfiles, func(p SSHProfile) bool { return p.Name == name })
@@ -333,6 +348,9 @@ func (c *Config) validate() error {
 	}
 	if (c.CACertificateFile == "") != (c.CAPrivateFile == "") {
 		return errors.New("ca-certificate-file and ca-private-file must be set together")
+	}
+	if c.IssuesPerHour != nil && *c.IssuesPerHour < 0 {
+		return fmt.Errorf("issues-per-hour %d cannot be negative; use 0 to disable", *c.IssuesPerHour)
 	}
 	if c.ConfigdirEnabled && c.ConfigdirPath == "" {
 		return errors.New("configdir-enabled requires configdir-path")

@@ -56,6 +56,11 @@ roles-header: X-Auth-Roles
 # ca-certificate-file: tmp/tls/ca/cert.pem
 # ca-private-file: tmp/tls/ca/key.pem
 
+# Cap on credentials issued per user per hour, across both VPN and SSH. It
+# bounds a client stuck in a loop or a compromised session; 0 disables it.
+# Denied requests do not count against it.
+# issues-per-hour: 20
+
 # Drops OpenVPN client-config-dir and firewall files at startup.
 # configdir-enabled: true
 # configdir-path: /tmp/profiles

@@ -52,6 +52,9 @@ func (p *Portal) handleSSHIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if p.rateLimited(w, r, id.Username) {
+		return
+	}
 	if p.sshCA == nil {
 		p.log.ErrorContext(r.Context(), "ssh profile configured without an SSH CA", "profile", profile.Name)
 		http.Error(w, "internal error", http.StatusInternalServerError)
