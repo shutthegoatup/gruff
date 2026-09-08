@@ -82,6 +82,7 @@ func (p *Portal) handleSSHIssue(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		p.log.ErrorContext(r.Context(), "record issued ssh session", "user", id.Username, "error", err)
 	}
+	p.metrics.inc(metricIssued, "kind", string(KindSSH), "profile", profile.Name)
 	p.log.InfoContext(r.Context(), "issued ssh certificate",
 		"user", id.Username, "profile", profile.Name,
 		"serial", creds.Serial, "principals", creds.Principals, "expires", creds.NotAfter)
@@ -108,6 +109,7 @@ func (p *Portal) authorizeSSH(w http.ResponseWriter, r *http.Request, id identit
 		return config.SSHProfile{}, false
 	}
 	if !profile.AllowedFor(id.Roles) {
+		p.metrics.inc(metricDenied, "kind", string(KindSSH))
 		p.log.WarnContext(r.Context(), "denied ssh profile access",
 			"user", id.Username, "profile", name, "roles", id.Roles)
 		http.Error(w, "forbidden", http.StatusForbidden)

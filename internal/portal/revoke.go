@@ -105,6 +105,7 @@ func (p *Portal) handleRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p.metrics.inc(metricRevoked, "kind", string(session.Kind))
 	p.log.InfoContext(r.Context(), "revoked credential",
 		"user", session.User, "profile", session.Profile,
 		"kind", session.Kind, "serial", session.Serial)

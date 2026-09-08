@@ -86,6 +86,7 @@ func run() error {
 	}
 
 	p, err := portal.New(cfg, log, portal.Options{
+		Version:      version,
 		CA:           ca,
 		SSHCA:        sshCA,
 		OIDC:         auth.oidc,
@@ -107,6 +108,22 @@ func run() error {
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelError),
+	}
+
+	if cfg.MetricsListen != "" {
+		metrics := &http.Server{
+			Addr:              cfg.MetricsListen,
+			Handler:           p.MetricsHandler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelError),
+		}
+		go func() {
+			log.Info("serving metrics", "addr", cfg.MetricsListen)
+			if err := metrics.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Error("metrics listener stopped", "error", err)
+			}
+		}()
+		defer metrics.Close()
 	}
 
 	return serve(srv, log)

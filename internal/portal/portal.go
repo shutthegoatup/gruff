@@ -43,12 +43,17 @@ type Portal struct {
 
 	sessions  Store
 	limiter   *limiter
+	metrics   *metrics
+	version   string
 	templates map[string]*template.Template
 }
 
 // Options carries the collaborators a portal needs beyond its configuration.
 // Any of them may be nil when the corresponding feature is not configured.
 type Options struct {
+	// Version is reported by the build_info metric.
+	Version string
+
 	CA           *pki.CA
 	SSHCA        *sshca.CA
 	OIDC         *oidcauth.Authenticator
@@ -77,6 +82,8 @@ func New(cfg *config.Config, log *slog.Logger, opts Options) (*Portal, error) {
 		sessionCodec: opts.SessionCodec,
 		sessions:     store,
 		limiter:      newLimiter(cfg.IssueLimit()),
+		metrics:      newMetrics(),
+		version:      cmp.Or(opts.Version, "dev"),
 		templates:    templates,
 	}, nil
 }

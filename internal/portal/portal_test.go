@@ -59,12 +59,39 @@ template: |
 
 func newTestPortal(t *testing.T) http.Handler {
 	t.Helper()
-	return newTestPortalWithLimit(t, 0)
+	_, h := buildTestPortal(t, 0)
+	return h
 }
 
 // newTestPortalWithLimit builds a portal with a per-user issuance cap; zero
 // disables it, which is what most tests want.
 func newTestPortalWithLimit(t *testing.T, perHour int) http.Handler {
+	t.Helper()
+	_, h := buildTestPortal(t, perHour)
+	return h
+}
+
+// newTestPortalWithMetrics also returns a scrape function, since metrics are
+// served on their own listener rather than the portal mux.
+func newTestPortalWithMetrics(t *testing.T) (http.Handler, func(*testing.T) string) {
+	t.Helper()
+	return newTestPortalWithMetricsAndLimit(t, 0)
+}
+
+func newTestPortalWithMetricsAndLimit(t *testing.T, perHour int) (http.Handler, func(*testing.T) string) {
+	t.Helper()
+
+	p, h := buildTestPortal(t, perHour)
+	scrape := func(t *testing.T) string {
+		t.Helper()
+		w := httptest.NewRecorder()
+		p.MetricsHandler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		return w.Body.String()
+	}
+	return h, scrape
+}
+
+func buildTestPortal(t *testing.T, perHour int) (*Portal, http.Handler) {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "conf.yaml")
@@ -90,7 +117,7 @@ func newTestPortalWithLimit(t *testing.T, perHour int) http.Handler {
 	if err != nil {
 		t.Fatalf("New(): %v", err)
 	}
-	return p.Handler()
+	return p, p.Handler()
 }
 
 // request issues a request as a user holding roles.
