@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -54,7 +55,7 @@ func (p *Portal) handleProfile(w http.ResponseWriter, r *http.Request) {
 func (p *Portal) handleIssued(w http.ResponseWriter, r *http.Request) {
 	id := p.identify(r)
 
-	sessions, err := p.sessions.For(r.Context(), id.Username)
+	sessions, err := p.visibleSessions(r.Context(), id)
 	if err != nil {
 		p.log.ErrorContext(r.Context(), "read issued sessions", "user", id.Username, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -64,7 +65,8 @@ func (p *Portal) handleIssued(w http.ResponseWriter, r *http.Request) {
 	p.render(w, r, "issued.html", struct {
 		page
 		Sessions []Session
-	}{p.page(id), sessions})
+		Admin    bool
+	}{p.page(id), sessions, id.Admin})
 }
 
 func (p *Portal) handleIssue(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +149,15 @@ func (p *Portal) handleIssue(w http.ResponseWriter, r *http.Request) {
 	if err := p.cfg.ProfileTemplate().Execute(w, data); err != nil {
 		p.log.ErrorContext(r.Context(), "render profile template", "user", id.Username, "error", err)
 	}
+}
+
+// visibleSessions is every session for an administrator, and the caller's own
+// for everyone else.
+func (p *Portal) visibleSessions(ctx context.Context, id identity) ([]Session, error) {
+	if id.Admin {
+		return p.sessions.All(ctx)
+	}
+	return p.sessions.For(ctx, id.Username)
 }
 
 // authorize resolves the {profile} path value and checks the caller may use it.

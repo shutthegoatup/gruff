@@ -254,6 +254,10 @@ type Config struct {
 	UsernameHeader string `yaml:"username-header"`
 	RolesHeader    string `yaml:"roles-header"`
 
+	// AdminRoles may view and revoke every session, not only their own. Empty
+	// means nobody can: there is no implicit administrator.
+	AdminRoles []string `yaml:"admin-roles"`
+
 	CACertificateFile string `yaml:"ca-certificate-file"`
 	CAPrivateFile     string `yaml:"ca-private-file"`
 
@@ -303,6 +307,14 @@ func (c *Config) Profile(name string) (Profile, error) {
 		return Profile{}, fmt.Errorf("%q: %w", name, ErrNoProfile)
 	}
 	return c.Profiles[i], nil
+}
+
+// IsAdmin reports whether any of the caller's roles grants administration.
+// With no admin-roles configured this is always false.
+func (c *Config) IsAdmin(roles []string) bool {
+	return slices.ContainsFunc(c.AdminRoles, func(required string) bool {
+		return slices.Contains(roles, required)
+	})
 }
 
 // IssueLimit is the per-user hourly cap; zero means unlimited.

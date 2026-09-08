@@ -91,6 +91,15 @@ func newTestPortalWithMetricsAndLimit(t *testing.T, perHour int) (http.Handler, 
 	return h, scrape
 }
 
+// newTestPortalWithAdmin configures an admin role, which is otherwise unset.
+func newTestPortalWithAdmin(t *testing.T) http.Handler {
+	t.Helper()
+
+	p, h := buildTestPortal(t, 0)
+	p.cfg.AdminRoles = []string{"gruff-admin"}
+	return h
+}
+
 func buildTestPortal(t *testing.T, perHour int) (*Portal, http.Handler) {
 	t.Helper()
 

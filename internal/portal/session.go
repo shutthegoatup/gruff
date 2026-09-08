@@ -77,6 +77,9 @@ func (s Session) ShortSerial() string {
 type Store interface {
 	Add(ctx context.Context, s Session) error
 	For(ctx context.Context, user string) ([]Session, error)
+	// All returns every unexpired session. It backs the administrator view and
+	// is never reached without an admin role.
+	All(ctx context.Context) ([]Session, error)
 }
 
 // MemoryStore is the default Store: newest first, capped, and gone with the
@@ -113,6 +116,15 @@ func (s *MemoryStore) For(_ context.Context, user string) ([]Session, error) {
 		}
 	}
 	return out, nil
+}
+
+// All returns every unexpired session, newest first.
+func (s *MemoryStore) All(_ context.Context) ([]Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.prune(time.Now())
+	return slices.Clone(s.sessions), nil
 }
 
 // prune drops expired entries and caps the list. Callers must hold s.mu.

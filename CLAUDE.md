@@ -62,7 +62,9 @@ Two invariants the tests pin deliberately, because earlier versions broke them:
   never stored, logged or re-rendered.
 
 Unknown and forbidden profiles return identical responses so the portal does not
-disclose which profiles exist. `/issued` is scoped to the requesting user.
+disclose which profiles exist. `/issued` is scoped to the requesting user, unless
+they hold one of `admin-roles` - which grants visibility and revocation over every
+session, and no profiles. With `admin-roles` unset nobody is an administrator.
 
 A control that cannot work is not shown: log out appears only when Gruff owns the
 session (oidc) or an operator configured a URL that genuinely ends one (proxy).
