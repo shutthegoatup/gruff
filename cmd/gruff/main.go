@@ -39,8 +39,13 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) > 1 && os.Args[1] == "sign-host" {
-		return signHost(os.Args[2:])
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "sign-host":
+			return signHost(os.Args[2:])
+		case "sign-server":
+			return signServer(os.Args[2:])
+		}
 	}
 
 	var (
