@@ -42,6 +42,7 @@ type Portal struct {
 	sessionCodec *authsession.Codec
 
 	sessions  Store
+	limiter   *limiter
 	templates map[string]*template.Template
 }
 
@@ -75,6 +76,7 @@ func New(cfg *config.Config, log *slog.Logger, opts Options) (*Portal, error) {
 		oidc:         opts.OIDC,
 		sessionCodec: opts.SessionCodec,
 		sessions:     store,
+		limiter:      newLimiter(cfg.IssueLimit()),
 		templates:    templates,
 	}, nil
 }

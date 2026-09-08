@@ -59,6 +59,13 @@ template: |
 
 func newTestPortal(t *testing.T) http.Handler {
 	t.Helper()
+	return newTestPortalWithLimit(t, 0)
+}
+
+// newTestPortalWithLimit builds a portal with a per-user issuance cap; zero
+// disables it, which is what most tests want.
+func newTestPortalWithLimit(t *testing.T, perHour int) http.Handler {
+	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "conf.yaml")
 	if err := os.WriteFile(path, []byte(testConfig), 0o600); err != nil {
@@ -68,6 +75,7 @@ func newTestPortal(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
+	cfg.IssuesPerHour = &perHour
 
 	ca, err := pki.Generate("Test Org")
 	if err != nil {
