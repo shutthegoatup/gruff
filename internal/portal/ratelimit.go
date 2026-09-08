@@ -67,11 +67,17 @@ func (l *limiter) allow(key string, now time.Time) (bool, time.Duration) {
 
 // sweep drops buckets that have refilled completely, so an instance that has
 // served many users does not hold one entry each forever. Callers hold l.mu.
+//
+// An idle hour accrues perHour tokens, which is the whole capacity, so a
+// bucket untouched that long is full and a fresh one would start identically.
+// Elapsed time is the whole test: b.tokens is only as recent as b.last, so
+// reading it here would keep every bucket that was last seen empty - which is
+// precisely the set worth dropping.
 func (l *limiter) sweep(now time.Time) {
 	if len(l.buckets) < 1024 {
 		return
 	}
 	maps.DeleteFunc(l.buckets, func(_ string, b *bucket) bool {
-		return b.tokens >= l.perHour && now.Sub(b.last) > time.Hour
+		return now.Sub(b.last) > time.Hour
 	})
 }

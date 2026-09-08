@@ -34,7 +34,7 @@ func (p *Portal) handleSetup(w http.ResponseWriter, r *http.Request) {
 		data.HasSSH = true
 		data.SSHCAPublicKey = p.sshCA.PublicKey()
 		data.SSHFingerprint = p.sshCA.Fingerprint()
-		data.SSHDConfig = sshdConfig()
+		data.SSHDConfig = sshdConfig(p.cfg)
 		data.KnownHosts = p.sshCA.KnownHostsLine(hostPatterns(p.cfg.SSHProfiles))
 		data.PrincipalsFiles = principalsFiles(p.cfg.SSHProfiles)
 	}
@@ -66,16 +66,38 @@ func hostPatterns(profiles []config.SSHProfile) []string {
 }
 
 // sshdConfig is the snippet that makes a host trust Gruff's CA.
-func sshdConfig() string {
-	return strings.Join([]string{
-		"# Trust user certificates signed by Gruff.",
+//
+// Each file it names has to be on the host before sshd reloads. RevokedKeys is
+// the trap: if the file is missing sshd still starts and sshd -t still passes,
+// but every public key is then refused, so a host whose only method is
+// publickey locks everyone out with nothing in the config test to show for it.
+// The snippet therefore says where each file comes from.
+func sshdConfig(cfg *config.Config) string {
+	lines := []string{
+		"# Trust user certificates signed by Gruff. The key is above; copy it here.",
 		"TrustedUserCAKeys /etc/ssh/gruff_ca.pub",
 		"",
 		"# Present this host's own certificate, so clients stop being asked to",
-		"# confirm a fingerprint. Sign the host key with Gruff to obtain it.",
+		"# confirm a fingerprint:  gruff sign-host -host " + exampleHost(cfg),
 		"HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub",
 		"",
-		"# Certificates Gruff has revoked. It rewrites this on every revocation.",
+		"# Certificates Gruff has revoked. A missing file here does not stop sshd",
+		"# starting - it silently refuses every public key. Put an empty one in",
+		"# place first if you have nothing to revoke yet.",
+	}
+
+	// The SSH host is not the machine Gruff runs on, so unlike the OpenVPN
+	// directives this is a copy rather than a shared directory.
+	if cfg.ConfigdirEnabled && cfg.ConfigdirPath != "" {
+		lines = append(lines,
+			"# Gruff rewrites "+cfg.ConfigdirPath+"/krl hourly and on every revocation;",
+			"# ship that file to each host.")
+	} else {
+		lines = append(lines,
+			"# Enable configdir-path on the portal to have Gruff write one.")
+	}
+
+	lines = append(lines,
 		"RevokedKeys /etc/ssh/gruff_krl",
 		"",
 		"# Only let a certificate log in as a principal listed for that login.",
@@ -84,7 +106,19 @@ func sshdConfig() string {
 		"# Certificates are the only credential; nothing long-lived is enrolled.",
 		"PasswordAuthentication no",
 		"AuthenticationMethods publickey",
-	}, "\n")
+	)
+	return strings.Join(lines, "\n")
+}
+
+// exampleHost picks a name from the configured profiles so the sign-host
+// command reads as something to run rather than something to adapt.
+func exampleHost(cfg *config.Config) string {
+	for _, p := range cfg.SSHProfiles {
+		if len(p.Hosts) > 0 {
+			return p.Hosts[0]
+		}
+	}
+	return "<this-host>"
 }
 
 // principalsFiles maps each principal to the AuthorizedPrincipalsFile that must

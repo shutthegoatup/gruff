@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/shutthegoatup/gruff/internal/config"
 )
 
 // The same deny-by-default invariant the VPN side pins, on the SSH path.
@@ -94,5 +96,41 @@ func TestSetupPublishesCAPublicKeysOnly(t *testing.T) {
 	}
 	if strings.Contains(body, "PRIVATE KEY") {
 		t.Fatal("setup page leaked private key material")
+	}
+}
+
+// An operator following the setup page has to be able to find the KRL. sshd
+// does not complain about a missing RevokedKeys file - it starts, sshd -t
+// passes, and then refuses every public key - so the page has to name where
+// the file comes from rather than leave it to be discovered that way.
+func TestSetupPageSaysWhereTheKRLComesFrom(t *testing.T) {
+	t.Parallel()
+
+	p, h := buildTestPortal(t, 0)
+	p.cfg.ConfigdirEnabled = true
+	p.cfg.ConfigdirPath = "/var/lib/gruff/profiles"
+
+	body := request(t, h, http.MethodGet, "/setup", "alice", "ssh-bastion").Body.String()
+	if !strings.Contains(body, "RevokedKeys") {
+		t.Fatal("setup page does not mention RevokedKeys at all")
+	}
+
+	source := p.cfg.ConfigdirPath + "/krl"
+	if !strings.Contains(body, source) {
+		t.Errorf("setup page never says the KRL is written to %s", source)
+	}
+}
+
+// The snippet is generated per deployment, so it must hold together when the
+// portal publishes nothing.
+func TestSSHDConfigWithoutAConfigdir(t *testing.T) {
+	t.Parallel()
+
+	got := sshdConfig(&config.Config{})
+	if strings.Contains(got, "/krl") {
+		t.Errorf("points at a KRL the portal does not write:\n%s", got)
+	}
+	if !strings.Contains(got, "configdir-path") {
+		t.Errorf("does not say how to get one:\n%s", got)
 	}
 }
