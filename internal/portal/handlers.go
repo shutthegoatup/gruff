@@ -113,6 +113,7 @@ func (p *Portal) handleIssue(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		p.log.ErrorContext(r.Context(), "record issued session", "user", id.Username, "error", err)
 	}
+	p.metrics.inc(metricIssued, "kind", string(KindVPN), "profile", profile.Name)
 	p.log.InfoContext(r.Context(), "issued certificate",
 		"user", id.Username, "profile", profile.Name,
 		"serial", creds.Serial, "expires", creds.NotAfter)
@@ -164,6 +165,7 @@ func (p *Portal) authorize(w http.ResponseWriter, r *http.Request, id identity) 
 	}
 
 	if !profile.AllowedFor(id.Roles) {
+		p.metrics.inc(metricDenied, "kind", string(KindVPN))
 		p.log.WarnContext(r.Context(), "denied profile access",
 			"user", id.Username, "profile", name, "roles", id.Roles)
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -202,6 +204,7 @@ func (p *Portal) rateLimited(w http.ResponseWriter, r *http.Request, user string
 		return false
 	}
 
+	p.metrics.inc(metricRateLimited)
 	p.log.WarnContext(r.Context(), "issuance rate limit reached", "user", user, "retry_after", wait)
 	w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())))
 	http.Error(w, "too many certificates issued recently; try again shortly", http.StatusTooManyRequests)

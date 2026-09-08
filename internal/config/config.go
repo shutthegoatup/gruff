@@ -243,6 +243,10 @@ func (p SSHProfile) validate() error {
 // Config is the fully validated portal configuration.
 type Config struct {
 	Listen string `yaml:"listen"`
+	// MetricsListen serves Prometheus metrics on its own address. Unset means
+	// no metrics: the series name profiles and usage, which does not belong on
+	// the same listener as the portal itself.
+	MetricsListen string `yaml:"metrics-listen"`
 
 	Auth Auth `yaml:"auth"`
 

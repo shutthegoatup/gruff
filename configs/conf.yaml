@@ -8,6 +8,10 @@
 listen: 127.0.0.1:9000
 banner: Gruff
 
+# Prometheus metrics, on their own address. Unset means none: the series name
+# profiles and usage, which does not belong on the listener users reach.
+# metrics-listen: 127.0.0.1:9090
+
 #
 # How Gruff establishes who you are.
 #

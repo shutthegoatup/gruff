@@ -83,6 +83,7 @@ func (p *Portal) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// A stale tab or a forged callback is ordinary; a verification failure
 		// is not.
+		p.metrics.inc(metricSignIn)
 		if errors.Is(err, oidcauth.ErrFlow) {
 			p.log.WarnContext(r.Context(), "sign-in did not match a login in progress")
 		} else {
