@@ -1,6 +1,6 @@
-# Templates and stylesheets are embedded in the binary and Gruff makes no
-# outbound TLS calls, so the runtime image needs no filesystem at all: no shell,
-# no libc, no CA bundle, nothing to exec if the process is ever subverted.
+# Templates and stylesheets are embedded in the binary, so the runtime image is
+# a static binary and a trust store: no shell, no libc, nothing to exec if the
+# process is ever subverted.
 FROM golang:1.27 AS build
 
 WORKDIR /src
@@ -21,6 +21,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
 RUN ! ldd /gruff 2>/dev/null | grep -q . || (echo "binary is not static" >&2; exit 1)
 
 FROM scratch
+
+# In OIDC mode Gruff calls the provider's discovery, token and JWKS endpoints
+# over HTTPS. A CGO-free binary reads its roots from disk, so on a bare scratch
+# image every one of those calls fails to verify and sign-in cannot work.
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build /gruff /gruff
 

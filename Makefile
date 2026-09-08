@@ -10,7 +10,7 @@ TAILWIND_VERSION := v4.3.3
 TAILWIND := .cache/tailwindcss-$(TAILWIND_VERSION)
 TAILWIND_URL := https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-linux-x64
 
-.PHONY: all build test lint vulncheck check ui ui-check container clean
+.PHONY: all build test lint vulncheck check ui ui-check container container-check clean
 
 all: check build
 
@@ -47,6 +47,17 @@ container:
 	docker build -f build/package/Dockerfile \
 		--build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE) .
+
+# scratch has no shell, so the image is inspected from outside it. Both checks
+# exist because both have been broken before: the image once could not start at
+# all, and it once shipped without the roots OIDC sign-in needs.
+container-check: container
+	docker run --rm $(IMAGE) --version
+	@id=$$(docker create $(IMAGE)); \
+		docker cp $$id:/etc/ssl/certs/ca-certificates.crt - >/dev/null 2>&1; \
+		rc=$$?; docker rm -f $$id >/dev/null; \
+		test $$rc -eq 0 \
+			|| { echo "image has no trust store; OIDC sign-in cannot verify the provider"; exit 1; }
 
 clean:
 	rm -f gruff
