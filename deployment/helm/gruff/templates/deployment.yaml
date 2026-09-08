@@ -26,9 +26,7 @@ spec:
         checksum/config: {{ .Values.config | sha256sum }}
     spec:
       securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
+{{ toYaml .Values.podSecurityContext | indent 8 }}
       containers:
       # Gruff authenticates users itself, so this is the only web container and
       # it is meant to be reachable.
@@ -78,21 +76,24 @@ spec:
           value: /etc/config/openvpn.conf
         - name: OPENVPN_DISABLE_FORWARDING
           value: "True"
-        - name: OPENVPN_CLIENT_CONNECT
-          value: /usr/local/bin/client_connected.sh
-        - name: OPENVPN_CLIENT_DISCONNECT
-          value: /usr/local/bin/client_disconnect.sh
         ports:
         - name: openvpn
           containerPort: {{ .Values.service.openvpn.internalPort }}
           protocol: UDP
         securityContext:
+          # Opening /dev/net/tun and programming routes needs uid 0, so this
+          # container opts out of the pod's runAsNonRoot rather than inheriting
+          # it - inheriting it and asking for uid 0 is refused outright and the
+          # pod never starts.
+          runAsNonRoot: false
           runAsUser: 0
           allowPrivilegeEscalation: false
           capabilities:
             # NET_ADMIN alone covers tun setup, routing and iptables.
             drop: ["ALL"]
             add: ["NET_ADMIN"]
+        resources:
+{{ toYaml .Values.resources.openvpn | indent 10 }}
         volumeMounts:
         - name: config
           mountPath: /etc/config
@@ -111,17 +112,19 @@ spec:
         configMap:
           name: {{ template "gruff.fullname" . }}
           defaultMode: 0444
+      # 0440, not 0400: a secret volume is owned by root and the group in
+      # podSecurityContext.fsGroup, and Gruff does not run as root.
       - name: auth
         secret:
           secretName: {{ .Values.auth.existingSecret }}
-          defaultMode: 0400
+          defaultMode: 0440
       - name: ca
         secret:
           secretName: {{ .Values.ca.existingSecret }}
-          defaultMode: 0400
+          defaultMode: 0440
       - name: openvpn-tls
         secret:
           secretName: {{ .Values.openvpn.existingSecret }}
-          defaultMode: 0400
+          defaultMode: 0440
       - name: profiles
         emptyDir: {}

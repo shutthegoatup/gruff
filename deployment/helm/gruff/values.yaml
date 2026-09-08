@@ -4,12 +4,17 @@
 # Traffic path: Ingress -> gruff (:9000)
 #
 # Gruff authenticates users itself via OpenID Connect, so there is no sidecar
-# and it is meant to be exposed. Set auth.mode to proxy in the config below if
-# you would rather front it with your own SSO proxy - then bind it to loopback
-# and point the Service at the proxy instead.
+# and it is meant to be exposed. If you would rather front it with your own SSO
+# proxy, set auth.mode to proxy in the config below AND bind listen back to
+# 127.0.0.1, then point the Service at the proxy: in proxy mode Gruff believes
+# the X-Auth-* headers of whoever reaches the port.
 #
 image:
   gruff: quay.io/shutthegoatup/gruff:0.3.0
+  # Placeholder: no such image is published anywhere. Supply your own OpenVPN
+  # image and pin it. All Gruff needs of it is that it runs openvpn against
+  # $OPENVPN_CONFIG as uid 0 with NET_ADMIN, and passes the config through
+  # untouched - the client-connect hook in it is how profile routes are chosen.
   openvpn: shutthegoatup/openvpn
 
 service:
@@ -40,7 +45,14 @@ ca:
 
 ##
 # The OpenVPN server's own keypair, signed by the CA above. Secret keys:
-# cert.pem and key.pem.
+# cert.pem and key.pem. Gruff will issue it for you - a client certificate
+# cannot stand in, because clients check for the serverAuth usage it must not
+# carry:
+#
+#   gruff sign-server -config gruff.yml -cn vpn.example.com \
+#     -hosts vpn.example.com -out ./server
+#   kubectl create secret generic gruff-openvpn \
+#     --from-file=cert.pem=server/cert.pem --from-file=key.pem=server/key.pem
 ##
 openvpn:
   existingSecret: ""
@@ -58,33 +70,51 @@ auth:
   clientSecretKey: client-secret
   sessionKeyKey: session.key
 
+# Secret volumes are owned by root:fsGroup, and Gruff runs as 65532, so it can
+# only read its CA key and session key if it is in that group.
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
 resources:
   gruff:
     requests: {cpu: 10m, memory: 32Mi}
     limits: {memory: 128Mi}
+  openvpn:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
 
 ##
 # Config files, dropped straight into a ConfigMap.
 ##
 config: |
-  oauth2-proxy.cfg: |
-    http_address = "0.0.0.0:8000"
-    upstreams = ["http://127.0.0.1:9000"]
-    provider = "keycloak-oidc"
-    oidc_issuer_url = "https://auth.example.com/realms/main"
-    client_id = "gruff"
-    email_domains = ["*"]
-    set_xauthrequest = true
-    pass_access_token = false
-
   gruff.yml: |
-    # Loopback only: the SSO sidecar is the sole permitted client.
-    listen: 127.0.0.1:9000
+    # Gruff holds the session itself, so this is reachable from the Ingress and
+    # from the kubelet's probes. Only bind loopback if something in this pod is
+    # authenticating on its behalf.
+    listen: 0.0.0.0:9000
     banner: Gruff
     # Where the provider returns to after signing out. Gruff ends its own
     # session and then hands off to the provider's end-session endpoint.
     logout-url: https://gruff.example.com/
     help-url: https://github.com/shutthegoatup/gruff/issues
+
+    # Without this block Gruff runs in proxy mode, which believes the X-Auth-*
+    # headers of anything that can reach the port - and the Ingress above sends
+    # it the internet.
+    auth:
+      mode: oidc
+      issuer: https://auth.example.com/realms/main
+      client-id: gruff
+      client-secret-env: GRUFF_CLIENT_SECRET
+      redirect-url: https://gruff.example.com/auth/callback
+      # The claim carrying the roles the profiles below are matched against.
+      roles-claim: groups
+      username-claim: preferred_username
+      session-key-file: /etc/gruff/auth/session.key
+      session-lifetime: 8h
 
     ca-certificate-file: /etc/tls/ca/cert.pem
     ca-private-file: /etc/tls/ca/key.pem
