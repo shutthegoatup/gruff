@@ -61,13 +61,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: build/package/Dockerfile
-          push: false
-          load: true
-          tags: gruff:ci
-      # FROM scratch has no shell, so --version is the only thing to ask it.
-      - run: docker run --rm gruff:ci --version
+      - run: make container-check IMAGE=gruff:ci
