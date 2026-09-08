@@ -21,6 +21,7 @@ func (p *Portal) handleSetup(w http.ResponseWriter, r *http.Request) {
 		SSHCAPublicKey  string
 		SSHFingerprint  string
 		SSHDConfig      string
+		KnownHosts      string
 		PrincipalsFiles []principalsFile
 		HasSSH          bool
 
@@ -34,6 +35,7 @@ func (p *Portal) handleSetup(w http.ResponseWriter, r *http.Request) {
 		data.SSHCAPublicKey = p.sshCA.PublicKey()
 		data.SSHFingerprint = p.sshCA.Fingerprint()
 		data.SSHDConfig = sshdConfig()
+		data.KnownHosts = p.sshCA.KnownHostsLine(hostPatterns(p.cfg.SSHProfiles))
 		data.PrincipalsFiles = principalsFiles(p.cfg.SSHProfiles)
 	}
 
@@ -51,11 +53,27 @@ type principalsFile struct {
 	Content string
 }
 
+// hostPatterns is every host any SSH profile names, for the client-side
+// cert-authority line.
+func hostPatterns(profiles []config.SSHProfile) []string {
+	seen := map[string]bool{}
+	for _, p := range profiles {
+		for _, h := range p.Hosts {
+			seen[h] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(seen))
+}
+
 // sshdConfig is the snippet that makes a host trust Gruff's CA.
 func sshdConfig() string {
 	return strings.Join([]string{
-		"# Trust certificates signed by Gruff.",
+		"# Trust user certificates signed by Gruff.",
 		"TrustedUserCAKeys /etc/ssh/gruff_ca.pub",
+		"",
+		"# Present this host's own certificate, so clients stop being asked to",
+		"# confirm a fingerprint. Sign the host key with Gruff to obtain it.",
+		"HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub",
 		"",
 		"# Certificates Gruff has revoked. It rewrites this on every revocation.",
 		"RevokedKeys /etc/ssh/gruff_krl",

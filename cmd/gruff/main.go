@@ -39,6 +39,10 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 && os.Args[1] == "sign-host" {
+		return signHost(os.Args[2:])
+	}
+
 	var (
 		configPath  = flag.String("config", "configs/conf.yaml", "path to the config file")
 		generateCA  = flag.Bool("dev-generate-ca", false, "generate a throwaway CA at startup; for development only")

@@ -120,6 +120,10 @@ than an anonymous key, and principals come from config rather than the username.
 The bundle ships as a tarball because that is the only delivery that carries the
 0600 the private key needs through to disk.
 
+`gruff sign-host` signs host keys, and the SSH installer writes the matching
+`@cert-authority` line into the user's `known_hosts` - together those remove the
+fingerprint prompt. Host keys are the host's own; Gruff never sees the private half.
+
 `/setup` renders the server-side configuration an operator needs - `TrustedUserCAKeys`,
 `AuthorizedPrincipalsFile`, the OpenVPN server directives - so a deployment outside
 the bundled Helm chart has everything it needs. It publishes public material only;
