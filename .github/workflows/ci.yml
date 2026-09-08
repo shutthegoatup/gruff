@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The OpenVPN integration test skips itself when the binary is absent,
+      # which would quietly retire the only end-to-end check of the VPN path.
+      - run: sudo apt-get update && sudo apt-get install -y openvpn
+      - run: make test
+
+  # The committed stylesheet must match what the templates produce, or the
+  # binary ships markup its CSS does not cover.
+  stylesheet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: tailwind-${{ hashFiles('Makefile') }}
+      - run: make ui-check
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make vulncheck
+
+  # Worth building on every change: a previous version of the image could not
+  # start, because the Dockerfile flattened the template path.
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make container-check IMAGE=gruff:ci
