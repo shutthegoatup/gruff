@@ -22,7 +22,7 @@ const (
 // A tarball leaves the user to fix the private key's mode by hand, which is the
 // easiest part to get wrong. The script is idempotent, contacts nothing, and is
 // plain text so it can be read before it is run.
-func writeSSHInstaller(w io.Writer, profile config.SSHProfile, user string, creds sshca.Credentials) error {
+func writeSSHInstaller(w io.Writer, profile config.SSHProfile, user string, creds sshca.Credentials, knownHosts string) error {
 	dir := "${HOME}/.ssh/gruff/" + profile.Name
 	expires := creds.NotAfter.Format(time.RFC3339)
 
@@ -91,6 +91,18 @@ func writeSSHInstaller(w io.Writer, profile config.SSHProfile, user string, cred
 	b.WriteString("\trm -f \"$tmp\"\n")
 	b.WriteString("\techo \"added Include to $CONFIG\"\n")
 	b.WriteString("fi\n\n")
+
+	// Trust host certificates from the same CA, so connecting does not ask the
+	// user to confirm a fingerprint they have no way to verify.
+	if knownHosts != "" {
+		b.WriteString("KNOWN=\"${HOME}/.ssh/known_hosts\"\n")
+		fmt.Fprintf(&b, "CA_LINE='%s'\n", knownHosts)
+		b.WriteString("touch \"$KNOWN\"\n")
+		b.WriteString("if ! grep -qF \"$CA_LINE\" \"$KNOWN\"; then\n")
+		b.WriteString("\tprintf '%s\\n' \"$CA_LINE\" >> \"$KNOWN\"\n")
+		b.WriteString("\techo \"added the host certificate authority to $KNOWN\"\n")
+		b.WriteString("fi\n\n")
+	}
 
 	b.WriteString("echo\n")
 	fmt.Fprintf(&b, "echo \"Installed %s. Expires %s.\"\n", profile.Name, expires)

@@ -24,6 +24,16 @@ Accepted certificate ID "alice.mercer@bastion" (serial 1385015093048419262)
   signed by ED25519 CA SHA256:36vJegdN+FJ4q5b3Z/Q96rMZLm95HY917aVNPxAoDBE
 ```
 
+**Host certificates.** `gruff sign-host` signs a host's own key, so clients stop
+being asked to confirm a fingerprint they have no way to check. Run it from
+configuration management at provision time:
+
+```sh
+gruff sign-host -hostnames bastion.example.com \
+  -key /etc/ssh/ssh_host_ed25519_key.pub \
+  > /etc/ssh/ssh_host_ed25519_key-cert.pub
+```
+
 **Server configuration.** `/setup` shows exactly what your hosts need in order to
 trust Gruff — `TrustedUserCAKeys`, `AuthorizedPrincipalsFile`, the OpenVPN server
 directives — so a deployment outside the bundled chart has everything it needs. It
