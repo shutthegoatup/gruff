@@ -348,6 +348,45 @@ func Roles(header string) []string {
 	return roles
 }
 
+// checkHeaderTrust refuses proxy mode on a listener anyone can reach.
+//
+// In proxy mode Gruff verifies nothing: the caller is whoever the X-Auth-*
+// headers say, so a reachable port hands out credentials onto a private
+// network to anyone who asks. The proxy is meant to be the only client, and
+// binding loopback is what makes that true. This has gone wrong twice - the
+// Ingress once routed around the sidecar entirely - so it fails at startup
+// rather than waiting to be noticed.
+func (c *Config) checkHeaderTrust() error {
+	if c.Auth.Mode != AuthProxy || c.Auth.InsecureTrustedHeaders {
+		return nil
+	}
+	if loopbackListen(c.Listen) {
+		return nil
+	}
+	return fmt.Errorf(
+		"listen %s is reachable beyond this host, but auth mode is proxy, which believes the %s header of every caller: "+
+			"bind 127.0.0.1 so only the proxy can reach it, use auth mode oidc, "+
+			"or set auth.insecure-trusted-headers if the network path is restricted some other way",
+		c.Listen, c.UsernameHeader)
+}
+
+// loopbackListen reports whether an address can only be reached from this host.
+// An address with no host reaches every interface, so it is not loopback.
+func loopbackListen(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	return ip.IsLoopback()
+}
+
 func (c *Config) validate() error {
 	c.Listen = cmp.Or(c.Listen, defaultListen)
 	c.FullnameHeader = cmp.Or(c.FullnameHeader, defaultFullnameHeader)
@@ -357,6 +396,9 @@ func (c *Config) validate() error {
 
 	if err := c.Auth.validate(); err != nil {
 		return fmt.Errorf("auth: %w", err)
+	}
+	if err := c.checkHeaderTrust(); err != nil {
+		return err
 	}
 
 	if len(c.Profiles) == 0 && len(c.SSHProfiles) == 0 {
