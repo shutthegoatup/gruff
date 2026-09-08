@@ -104,6 +104,12 @@ func run() error {
 		return fmt.Errorf("publish revocation list: %w", err)
 	}
 
+	// Keep them current: an expired CRL refuses every client, not merely the
+	// revoked ones.
+	refresh, stopRefresh := context.WithCancel(context.Background())
+	defer stopRefresh()
+	go p.RefreshRevocations(refresh)
+
 	srv := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           p.Handler(),
