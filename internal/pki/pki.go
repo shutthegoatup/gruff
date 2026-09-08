@@ -64,6 +64,21 @@ func Load(keyPath, certPath string) (*CA, error) {
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return nil, fmt.Errorf("%s: CA certificate lacks the certSign key usage", certPath)
 	}
+	// Gruff signs the revocation list with this key too, and a CRL from a CA
+	// without crlSign is refused by the servers that read it.
+	if cert.KeyUsage&x509.KeyUsageCRLSign == 0 {
+		return nil, fmt.Errorf("%s: CA certificate lacks the crlSign key usage, so its revocation list would be rejected", certPath)
+	}
+	// A dead CA issues certificates nothing will accept: the portal works, the
+	// download works, and every connection fails on a chain that cannot be
+	// verified. Say so at startup instead.
+	now := time.Now()
+	if now.After(cert.NotAfter) {
+		return nil, fmt.Errorf("%s: CA expired on %s", certPath, cert.NotAfter.Format(time.RFC3339))
+	}
+	if now.Before(cert.NotBefore) {
+		return nil, fmt.Errorf("%s: CA is not valid until %s", certPath, cert.NotBefore.Format(time.RFC3339))
+	}
 	pub, ok := key.Public().(interface{ Equal(crypto.PublicKey) bool })
 	if !ok {
 		return nil, fmt.Errorf("%s: %T cannot be compared to its certificate", keyPath, key.Public())
@@ -123,7 +138,10 @@ func (ca *CA) Issue(user, profile string, d time.Duration) (Credentials, error) 
 	// x509 encodes validity with second granularity, so truncate here rather
 	// than let the reported expiry drift from the certificate's own.
 	now := time.Now().UTC().Truncate(time.Second)
-	notAfter := now.Add(d)
+	notAfter, err := ca.boundedExpiry(now, d)
+	if err != nil {
+		return Credentials{}, err
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
@@ -153,6 +171,26 @@ func (ca *CA) Issue(user, profile string, d time.Duration) (Credentials, error) 
 		Serial:      serial.String(),
 		NotAfter:    notAfter,
 	}, nil
+}
+
+// boundedExpiry is when a certificate issued now for d should run out.
+//
+// A certificate cannot usefully outlive the CA that signed it: the chain stops
+// verifying the moment the issuer lapses, so the holder is left with a
+// credential that claims hours it does not have. Shortening it is honest - the
+// portal shows the real expiry - and it is what a renewal would do anyway.
+func (ca *CA) boundedExpiry(now time.Time, d time.Duration) (time.Time, error) {
+	// Load refuses a lapsed CA, but a process outlives its startup.
+	if !now.Before(ca.cert.NotAfter) {
+		return time.Time{}, fmt.Errorf("the CA expired on %s and can issue nothing",
+			ca.cert.NotAfter.Format(time.RFC3339))
+	}
+
+	notAfter := now.Add(d)
+	if issuer := ca.cert.NotAfter.UTC().Truncate(time.Second); notAfter.After(issuer) {
+		return issuer, nil
+	}
+	return notAfter, nil
 }
 
 // CertificatePEM returns the CA certificate, for writing out or pinning.
