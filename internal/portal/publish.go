@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/shutthegoatup/gruff/internal/pki"
@@ -24,20 +25,59 @@ func (p *Portal) PublishRevocations(ctx context.Context) error {
 // because that is the mechanism already in place for the ccd and rules files
 // and it needs no network path from the VPN server back to Gruff.
 func (p *Portal) publishRevocations(ctx context.Context) error {
-	if !p.cfg.ConfigdirEnabled || p.ca == nil {
+	if !p.cfg.ConfigdirEnabled {
 		return nil
 	}
 
-	crl, err := p.currentCRL(ctx)
-	if err != nil {
-		return err
+	if p.ca != nil {
+		crl, err := p.currentCRL(ctx)
+		if err != nil {
+			return err
+		}
+		if err := p.writeList("crl.pem", crl); err != nil {
+			return err
+		}
 	}
 
-	path := filepath.Join(p.cfg.ConfigdirPath, "crl.pem")
-	if err := os.WriteFile(path, crl, crlFileMode); err != nil {
+	if p.sshCA != nil {
+		krl, err := p.currentKRL(ctx)
+		if err != nil {
+			return err
+		}
+		if err := p.writeList("krl", krl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *Portal) writeList(name string, body []byte) error {
+	path := filepath.Join(p.cfg.ConfigdirPath, name)
+	if err := os.WriteFile(path, body, crlFileMode); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
+}
+
+// currentKRL builds the SSH revocation list from the store.
+func (p *Portal) currentKRL(ctx context.Context) ([]byte, error) {
+	var serials []uint64
+
+	if revoker, ok := p.sessions.(Revoker); ok {
+		entries, err := revoker.Revocations(ctx, KindSSH)
+		if err != nil {
+			return nil, fmt.Errorf("read revocations: %w", err)
+		}
+		for _, e := range entries {
+			serial, err := strconv.ParseUint(e.Serial, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("ssh serial %q: %w", e.Serial, err)
+			}
+			serials = append(serials, serial)
+		}
+	}
+
+	return p.sshCA.KRL(serials, time.Now())
 }
 
 // currentCRL builds the list from whatever the store currently holds.
