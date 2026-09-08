@@ -15,6 +15,7 @@ type identity struct {
 	Username string
 	Fullname string
 	Roles    []string
+	Admin    bool
 }
 
 // identify resolves the caller from the session cookie, or from proxy headers
@@ -22,10 +23,12 @@ type identity struct {
 // identity, which grants nothing.
 func (p *Portal) identify(r *http.Request) identity {
 	if p.oidc == nil {
+		roles := config.Roles(r.Header.Get(p.cfg.RolesHeader))
 		return identity{
 			Username: r.Header.Get(p.cfg.UsernameHeader),
 			Fullname: r.Header.Get(p.cfg.FullnameHeader),
-			Roles:    config.Roles(r.Header.Get(p.cfg.RolesHeader)),
+			Roles:    roles,
+			Admin:    p.cfg.IsAdmin(roles),
 		}
 	}
 
@@ -33,7 +36,12 @@ func (p *Portal) identify(r *http.Request) identity {
 	if err != nil {
 		return identity{}
 	}
-	return identity{Username: user.Username, Fullname: user.Fullname, Roles: user.Roles}
+	return identity{
+		Username: user.Username,
+		Fullname: user.Fullname,
+		Roles:    user.Roles,
+		Admin:    p.cfg.IsAdmin(user.Roles),
+	}
 }
 
 // requireSession redirects an unauthenticated caller to the provider. In proxy

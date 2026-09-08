@@ -46,6 +46,11 @@ auth:
 
 help-url: https://github.com/shutthegoatup/gruff/issues
 
+# Roles that may see and revoke every session, not only their own. Unset means
+# nobody can: there is no implicit administrator. This grants no profiles.
+# admin-roles:
+#   - gruff-admin
+
 fullname-header: X-Auth-Fullname
 username-header: X-Auth-Username
 roles-header: X-Auth-Roles

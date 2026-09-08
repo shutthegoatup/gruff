@@ -1,10 +1,22 @@
 {{ define "body" }}
-<div class="mb-8">
-  <h1 class="font-display text-3xl uppercase tracking-tight">Your sessions</h1>
-  <p class="mt-2 max-w-xl text-sm text-grey">
-    Certificates issued to you that have not yet expired. Revoking one stops the server
-    honouring it before it expires on its own.
-  </p>
+<div class="mb-8 flex flex-wrap items-center gap-4">
+  <div>
+    <h1 class="font-display text-3xl uppercase tracking-tight">
+      {{ if .Admin }}All sessions{{ else }}Your sessions{{ end }}
+    </h1>
+    <p class="mt-2 max-w-xl text-sm text-grey">
+      {{ if .Admin }}
+        Every unexpired certificate this instance has issued. Revoking one stops the
+        server honouring it before it expires on its own.
+      {{ else }}
+        Certificates issued to you that have not yet expired. Revoking one stops the
+        server honouring it before it expires on its own.
+      {{ end }}
+    </p>
+  </div>
+  {{ if .Admin }}
+    <span class="bg-ink px-2.5 py-1 font-mono text-xs text-amber">ADMIN VIEW</span>
+  {{ end }}
 </div>
 
 <section class="border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
@@ -13,6 +25,7 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b-[3px] border-ink bg-ink text-left text-[10px] font-bold uppercase tracking-widest text-amber">
+          {{ if $.Admin }}<th class="px-4 py-2.5">User</th>{{ end }}
           <th class="px-4 py-2.5">Profile</th>
           <th class="px-4 py-2.5">Expires</th>
           <th class="px-4 py-2.5">Issued</th>
@@ -24,6 +37,7 @@
       <tbody>
       {{ range .Sessions }}
         <tr class="border-b-2 border-ink last:border-0">
+          {{ if $.Admin }}<td class="px-4 py-3 font-mono text-xs">{{ .User }}</td>{{ end }}
           <td class="px-4 py-3 font-display text-sm uppercase">{{ .Profile }}</td>
           <td class="px-4 py-3 whitespace-nowrap">
             <span class="border-2 border-ink px-2 py-0.5 font-mono text-xs font-medium tabular-nums

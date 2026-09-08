@@ -74,24 +74,24 @@ func (p *Portal) handleRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look the serial up among the caller's own sessions. A serial is not a
-	// capability, so this is what stops one user revoking another's credential
-	// by guessing it.
+	// Look the serial up among the sessions this caller can see: their own, or
+	// all of them for an administrator. A serial is not a capability, so this
+	// is what stops one user revoking another's by guessing it.
 	serial := r.PathValue("serial")
-	mine, err := p.sessions.For(r.Context(), id.Username)
+	visible, err := p.visibleSessions(r.Context(), id)
 	if err != nil {
 		p.log.ErrorContext(r.Context(), "read sessions", "user", id.Username, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	i := slices.IndexFunc(mine, func(s Session) bool { return s.Serial == serial })
+	i := slices.IndexFunc(visible, func(s Session) bool { return s.Serial == serial })
 	if i < 0 {
 		p.log.WarnContext(r.Context(), "denied revocation", "user", id.Username, "serial", serial)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	session := mine[i]
+	session := visible[i]
 
 	if err := revoker.Revoke(r.Context(), Revocation{
 		Serial: session.Serial,
@@ -107,7 +107,7 @@ func (p *Portal) handleRevoke(w http.ResponseWriter, r *http.Request) {
 
 	p.metrics.inc(metricRevoked, "kind", string(session.Kind))
 	p.log.InfoContext(r.Context(), "revoked credential",
-		"user", session.User, "profile", session.Profile,
+		"by", id.Username, "user", session.User, "profile", session.Profile,
 		"kind", session.Kind, "serial", session.Serial)
 
 	// The revocation is recorded either way; failing to write the list out is
