@@ -8,7 +8,11 @@
 listen: 127.0.0.1:9000
 banner: Gruff
 
-logout-url: https://google.co.uk
+# Gruff holds no session in trusted-header mode, so it cannot log anyone out.
+# Set this only to a URL that actually ends the session - your proxy's sign-out
+# endpoint, not the IdP's - otherwise leave it unset and no button is shown.
+# logout-url: https://gruff.example.com/oauth2/sign_out
+
 help-url: https://github.com/shutthegoatup/gruff/issues
 
 fullname-header: X-Auth-Fullname

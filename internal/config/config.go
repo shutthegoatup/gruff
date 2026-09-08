@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -332,6 +333,30 @@ func (c *Config) validate() error {
 	}
 	if c.ConfigdirEnabled && c.ConfigdirPath == "" {
 		return errors.New("configdir-enabled requires configdir-path")
+	}
+
+	// A link the portal renders must be a real absolute URL. Logout in
+	// particular is only shown when configured, because in trusted-header mode
+	// Gruff holds no session of its own and cannot end one: the URL has to
+	// point at whatever does (the proxy's sign-out endpoint). A control that
+	// cannot work should not be on the page at all.
+	for _, link := range []struct{ name, value string }{
+		{"logout-url", c.LogoutURL},
+		{"help-url", c.HelpURL},
+	} {
+		if link.value == "" {
+			continue
+		}
+		u, err := url.Parse(link.value)
+		if err != nil {
+			return fmt.Errorf("%s: %w", link.name, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return fmt.Errorf("%s %q must be an absolute http or https URL", link.name, link.value)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("%s %q has no host", link.name, link.value)
+		}
 	}
 	// The .ovpn template is only needed if VPN profiles are configured; an
 	// SSH-only deployment has nothing to render with it.

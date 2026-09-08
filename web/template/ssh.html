@@ -1,8 +1,23 @@
 {{ define "body" }}
-<div class="mb-8 flex flex-wrap items-center gap-4">
+<div class="mb-6 flex flex-wrap items-center gap-4">
   <h1 class="font-display text-3xl uppercase tracking-tight">SSH Access</h1>
   <span class="bg-ink px-2.5 py-1 font-mono text-xs text-amber">{{ .GrantedCount }} / {{ len .Profiles }} GRANTED</span>
 </div>
+
+{{ if .GrantedCount }}
+<div class="mb-8 border-2 border-ink bg-paper">
+  <div class="border-b-2 border-ink bg-field px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-grey">
+    Issue installs a key, a certificate and an ssh_config entry
+  </div>
+  <pre class="overflow-x-auto px-4 py-3 font-mono text-xs">sh ~/Downloads/gruff-&lt;profile&gt;.sh</pre>
+  <p class="border-t-2 border-ink px-4 py-2.5 text-[13px] text-grey">
+    The download is a plain shell script &mdash; read it first if you like. It writes only
+    to <code class="bg-field px-1 font-mono text-xs">~/.ssh</code>, fetches nothing, and is safe
+    to run twice. Afterwards <code class="bg-field px-1 font-mono text-xs">ssh</code> just works
+    until the certificate expires; there is nothing to clean up.
+  </p>
+</div>
+{{ end }}
 
 <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
 {{ range .Profiles }}

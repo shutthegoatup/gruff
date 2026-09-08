@@ -74,7 +74,9 @@ config: |
     # Loopback only: the SSO sidecar is the sole permitted client.
     listen: 127.0.0.1:9000
     banner: Gruff
-    logout-url: https://auth.example.com/realms/main/protocol/openid-connect/logout
+    # oauth2-proxy's own sign-out: this ends the proxy session, then hands off
+    # to the IdP. Pointing straight at the IdP would leave the proxy session up.
+    logout-url: https://gruff.example.com/oauth2/sign_out?rd=https%3A%2F%2Fauth.example.com%2Frealms%2Fmain%2Fprotocol%2Fopenid-connect%2Flogout
     help-url: https://github.com/shutthegoatup/gruff/issues
 
     fullname-header: X-Auth-Request-Preferred-Username
