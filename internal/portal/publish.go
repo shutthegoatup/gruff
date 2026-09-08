@@ -13,10 +13,38 @@ import (
 
 const crlFileMode os.FileMode = 0o644
 
-// PublishRevocations writes the current CRL at startup, so a server is never
-// left with a missing list - which is not the same as an empty one.
+// RefreshInterval is how often the lists are rewritten. Well inside
+// crlValidity, so a missed cycle is survivable rather than an outage.
+const RefreshInterval = time.Hour
+
+// PublishRevocations writes the current lists, at startup and on a timer, so a
+// server is never left with a missing or an expired one.
 func (p *Portal) PublishRevocations(ctx context.Context) error {
 	return p.publishRevocations(ctx)
+}
+
+// RefreshRevocations rewrites the lists until ctx is cancelled.
+//
+// Without this the CRL is only rewritten when something is revoked, and every
+// client is refused once it passes nextUpdate.
+func (p *Portal) RefreshRevocations(ctx context.Context) {
+	if !p.cfg.ConfigdirEnabled {
+		return
+	}
+
+	ticker := time.NewTicker(RefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := p.publishRevocations(ctx); err != nil {
+				p.log.ErrorContext(ctx, "refresh revocation lists", "error", err)
+			}
+		}
+	}
 }
 
 // publishRevocations writes the current CRL where the OpenVPN server reads it.

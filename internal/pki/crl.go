@@ -9,10 +9,14 @@ import (
 	"time"
 )
 
-// crlValidity is how long OpenVPN may treat a published list as current. It is
-// short because an empty or stale CRL fails open: a revocation nobody has
-// fetched yet is not a revocation.
-const crlValidity = time.Hour
+// crlValidity is how long a published list stays current.
+//
+// This is not a fail-open knob: OpenSSL rejects every certificate once a CRL
+// passes nextUpdate ("CRL has expired"), so an under-refreshed list takes the
+// whole VPN down rather than merely missing a revocation. The window is
+// therefore comfortably wider than the refresh interval, which is what keeps
+// it current.
+const crlValidity = 24 * time.Hour
 
 // Revoked is a certificate that should no longer be honoured, until the moment
 // it would have expired anyway.
