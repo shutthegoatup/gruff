@@ -144,6 +144,28 @@ func (p *Portal) collectGauges(ctx context.Context) []gauge {
 		value:  1,
 	}}
 
+	// A store that reports its bound gets it published, because the bound is
+	// what decides whether a live credential is still revocable.
+	if counter, ok := p.sessions.(interface {
+		Tracked(context.Context) (int, int, error)
+	}); ok {
+		if held, limit, err := counter.Tracked(ctx); err != nil {
+			p.log.ErrorContext(ctx, "collect session gauge", "error", err)
+		} else {
+			gauges = append(gauges,
+				gauge{
+					name:  "gruff_sessions_tracked",
+					help:  "Issued credentials the audit list is holding.",
+					value: int64(held),
+				},
+				gauge{
+					name:  "gruff_sessions_capacity",
+					help:  "Most the audit list will hold; past it the oldest-expiring are forgotten and can no longer be revoked.",
+					value: int64(limit),
+				})
+		}
+	}
+
 	revoker, ok := p.sessions.(Revoker)
 	if !ok {
 		return gauges

@@ -306,6 +306,12 @@ type Config struct {
 	// IssuesPerHour caps issuance per user. Zero disables the limit.
 	IssuesPerHour *int `yaml:"issues-per-hour"`
 
+	// MaxTrackedSessions bounds the audit list. A credential the list has
+	// forgotten cannot be revoked through the portal, so a deployment with more
+	// live credentials than the default wants this raised; watch
+	// gruff_sessions_tracked. Zero uses the default.
+	MaxTrackedSessions int `yaml:"max-tracked-sessions"`
+
 	ConfigdirEnabled bool   `yaml:"configdir-enabled"`
 	ConfigdirPath    string `yaml:"configdir-path"`
 
@@ -449,6 +455,9 @@ func (c *Config) validate() error {
 	}
 	if c.IssuesPerHour != nil && *c.IssuesPerHour < 0 {
 		return fmt.Errorf("issues-per-hour %d cannot be negative; use 0 to disable", *c.IssuesPerHour)
+	}
+	if c.MaxTrackedSessions < 0 {
+		return fmt.Errorf("max-tracked-sessions %d cannot be negative", c.MaxTrackedSessions)
 	}
 	if c.ConfigdirEnabled && c.ConfigdirPath == "" {
 		return errors.New("configdir-enabled requires configdir-path")

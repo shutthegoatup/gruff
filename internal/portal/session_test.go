@@ -84,16 +84,16 @@ func TestSessionStoreIsBounded(t *testing.T) {
 
 	var s MemoryStore
 	expires := time.Now().Add(time.Hour)
-	for i := range maxSessions * 2 {
+	for i := range DefaultMaxSessions * 2 {
 		s.add(t, Session{User: "alice", Profile: fmt.Sprintf("p%d", i), ExpiresAt: expires})
 	}
 
 	got := s.forUser(t, "alice")
-	if len(got) != maxSessions {
-		t.Errorf("got %d sessions, want the store capped at %d", len(got), maxSessions)
+	if len(got) != DefaultMaxSessions {
+		t.Errorf("got %d sessions, want the store capped at %d", len(got), DefaultMaxSessions)
 	}
 	// The cap must drop the oldest, not the newest.
-	if want := fmt.Sprintf("p%d", maxSessions*2-1); got[0].Profile != want {
+	if want := fmt.Sprintf("p%d", DefaultMaxSessions*2-1); got[0].Profile != want {
 		t.Errorf("newest session = %q, want %q", got[0].Profile, want)
 	}
 }
