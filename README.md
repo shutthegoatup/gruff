@@ -59,7 +59,9 @@ session key signs everyone out at once.
 It can instead sit behind your own SSO proxy (`auth.mode: proxy`, the default). In
 that mode Gruff **authenticates nobody** — it trusts `X-Auth-*` headers, so anything
 that can reach it can assert its own username and roles. It binds `127.0.0.1` for
-that reason and must not be put on a routable address.
+that reason, and refuses to start in proxy mode on any other address: the proxy has
+to be the only thing that can reach the port. If the network path is restricted by
+something Gruff cannot see, `auth.insecure-trusted-headers: true` says so out loud.
 
 Beyond that:
 

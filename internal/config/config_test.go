@@ -355,3 +355,76 @@ func writeConfig(t *testing.T, yaml string) string {
 	}
 	return path
 }
+
+// Proxy mode verifies nothing: the caller is whoever the headers say. The
+// chart once pointed its Ingress straight at a portal in that mode, so the
+// combination is refused rather than left to be spotted in a review.
+func TestProxyModeRequiresLoopback(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		listen string
+		extra  string
+		reject bool
+	}{
+		{name: "default is loopback", listen: ""},
+		{name: "explicit loopback", listen: "127.0.0.1:9000"},
+		{name: "loopback by name", listen: "localhost:9000"},
+		{name: "ipv6 loopback", listen: "[::1]:9000"},
+		{name: "every interface", listen: "0.0.0.0:9000", reject: true},
+		{name: "no host at all", listen: ":9000", reject: true},
+		{name: "a routable address", listen: "10.0.0.5:9000", reject: true},
+		{
+			name:   "acknowledged",
+			listen: "0.0.0.0:9000",
+			extra:  "auth:\n  insecure-trusted-headers: true\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			yaml := validProfile + tt.extra
+			if tt.listen != "" {
+				// Quoted: an IPv6 address is a flow sequence to YAML.
+				yaml += "listen: \"" + tt.listen + "\"\n"
+			}
+
+			_, err := Load(writeConfig(t, yaml))
+			switch {
+			case tt.reject && err == nil:
+				t.Fatalf("Load() accepted proxy mode on %s", tt.listen)
+			case tt.reject && !strings.Contains(err.Error(), "auth mode is proxy"):
+				t.Errorf("Load() error = %v, want it to name the mode", err)
+			case !tt.reject && err != nil:
+				t.Fatalf("Load(): %v", err)
+			}
+		})
+	}
+}
+
+// The guard is about who can reach the port, not about the mode alone: when
+// Gruff holds the session itself it is meant to be exposed.
+func TestOIDCModeMayBindPublicly(t *testing.T) {
+	t.Parallel()
+
+	key := filepath.Join(t.TempDir(), "session.key")
+	if err := os.WriteFile(key, make([]byte, 32), 0o600); err != nil {
+		t.Fatalf("write session key: %v", err)
+	}
+
+	yaml := validProfile + `listen: 0.0.0.0:9000
+auth:
+  mode: oidc
+  issuer: https://auth.example.com
+  client-id: gruff
+  client-secret: shh
+  redirect-url: https://gruff.example.com/auth/callback
+  session-key-file: ` + key + "\n"
+
+	if _, err := Load(writeConfig(t, yaml)); err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+}

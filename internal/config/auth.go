@@ -51,6 +51,11 @@ type Auth struct {
 	// instance can hold a session. Never set this in a deployment.
 	InsecureCookies bool `yaml:"insecure-cookies"`
 
+	// InsecureTrustedHeaders allows proxy mode on a listener that is not
+	// loopback, for a deployment whose network path is restricted to the proxy
+	// by something Gruff cannot see.
+	InsecureTrustedHeaders bool `yaml:"insecure-trusted-headers"`
+
 	sessionKey []byte
 }
 
