@@ -3,11 +3,13 @@ package portal
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/shutthegoatup/gruff/internal/atomicfile"
 	"github.com/shutthegoatup/gruff/internal/pki"
 )
 
@@ -79,12 +81,15 @@ func (p *Portal) publishRevocations(ctx context.Context) error {
 	return nil
 }
 
+// writeList replaces the list in one step. The OpenVPN server re-reads crl.pem
+// on every connection, and this rewrites it hourly, so an in-place truncation
+// would refuse clients for the width of the write.
 func (p *Portal) writeList(name string, body []byte) error {
 	path := filepath.Join(p.cfg.ConfigdirPath, name)
-	if err := os.WriteFile(path, body, crlFileMode); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return nil
+	return atomicfile.Write(path, crlFileMode, func(w io.Writer) error {
+		_, err := w.Write(body)
+		return err
+	})
 }
 
 // currentKRL builds the SSH revocation list from the store.
