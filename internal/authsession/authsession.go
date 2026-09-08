@@ -36,6 +36,26 @@ func (c *Codec) Name() string {
 // maxCookieSize guards against emitting a cookie browsers will silently drop.
 const maxCookieSize = 3800
 
+// Purpose binds a ciphertext to what it was sealed for.
+//
+// The session cookie and the in-flight login cookie are sealed under the same
+// key, and their payloads share JSON field names by coincidence rather than by
+// design. Without this, a login cookie - handed to anyone who visits
+// /auth/login, and carrying a value they chose - decrypts cleanly as a session,
+// and only a type mismatch stops it being read as one. That is not a control.
+//
+// A purpose is the AEAD's additional data, so opening under the wrong one fails
+// the tag check. The version suffix is there to invalidate outstanding cookies
+// deliberately, should the payload ever change shape.
+type Purpose string
+
+const (
+	// SessionPurpose seals a signed-in user.
+	SessionPurpose Purpose = "gruff/session/v1"
+	// FlowPurpose seals a login that has not completed yet.
+	FlowPurpose Purpose = "gruff/flow/v1"
+)
+
 var (
 	// ErrNoSession means the request carried no session cookie at all.
 	ErrNoSession = errors.New("no session")
@@ -90,14 +110,15 @@ func GenerateKey() ([]byte, error) {
 }
 
 // SealRaw encrypts arbitrary bytes under the session key, so rotating it
-// invalidates in-flight logins too.
-func (c *Codec) SealRaw(plaintext []byte) (string, error) {
+// invalidates in-flight logins too. The purpose is authenticated alongside the
+// payload: a ciphertext sealed for one cannot be opened as another.
+func (c *Codec) SealRaw(purpose Purpose, plaintext []byte) (string, error) {
 	nonce := make([]byte, c.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("generate nonce: %w", err)
 	}
 
-	sealed := c.aead.Seal(nonce, nonce, plaintext, nil)
+	sealed := c.aead.Seal(nonce, nonce, plaintext, []byte(purpose))
 	value := base64.RawURLEncoding.EncodeToString(sealed)
 	if len(value) > maxCookieSize {
 		return "", fmt.Errorf("cookie is %d bytes, over the %d limit", len(value), maxCookieSize)
@@ -105,15 +126,19 @@ func (c *Codec) SealRaw(plaintext []byte) (string, error) {
 	return value, nil
 }
 
-// OpenRaw reverses [Codec.SealRaw].
-func (c *Codec) OpenRaw(value string) ([]byte, error) {
-	sealed, err := base64.RawURLEncoding.DecodeString(value)
+// OpenRaw reverses [Codec.SealRaw]. It fails unless the purpose matches the one
+// the value was sealed with.
+func (c *Codec) OpenRaw(purpose Purpose, value string) ([]byte, error) {
+	// Strict, so a cookie has exactly one spelling. Without it the trailing
+	// bits of the last character are ignored, and several distinct cookie
+	// strings decode to the same session.
+	sealed, err := base64.RawURLEncoding.Strict().DecodeString(value)
 	if err != nil || len(sealed) < c.aead.NonceSize() {
 		return nil, ErrInvalid
 	}
 
 	nonce, ciphertext := sealed[:c.aead.NonceSize()], sealed[c.aead.NonceSize():]
-	plaintext, err := c.aead.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := c.aead.Open(nil, nonce, ciphertext, []byte(purpose))
 	if err != nil {
 		return nil, ErrInvalid
 	}
@@ -127,7 +152,7 @@ func (c *Codec) Seal(u User) (*http.Cookie, error) {
 		return nil, fmt.Errorf("encode session: %w", err)
 	}
 
-	value, err := c.SealRaw(plaintext)
+	value, err := c.SealRaw(SessionPurpose, plaintext)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +177,7 @@ func (c *Codec) Open(r *http.Request) (User, error) {
 	}
 
 	// Tampered, truncated, or sealed under a rotated key: all the same to us.
-	plaintext, err := c.OpenRaw(cookie.Value)
+	plaintext, err := c.OpenRaw(SessionPurpose, cookie.Value)
 	if err != nil {
 		return User{}, ErrInvalid
 	}
