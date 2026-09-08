@@ -9,10 +9,13 @@ Issues OpenVPN configs with embedded, short-lived client certificates. It:
 
 ## Security model
 
-**The portal authenticates nobody.** It trusts the identity headers set by an SSO
-reverse proxy, so anything that can reach it can assert its own username and roles.
-It binds `127.0.0.1` by default for that reason, and the Helm chart exposes only the
-SSO sidecar. Do not put it on a routable address.
+Gruff authenticates users itself with OpenID Connect (`auth.mode: oidc`), holds the
+session in an encrypted cookie, and is meant to be exposed.
+
+It can instead trust identity headers from an SSO proxy in front of it
+(`auth.mode: proxy`, the default). In that mode it **authenticates nobody**, so
+anything that can reach it can assert its own username and roles — it binds
+`127.0.0.1` and must not be put on a routable address.
 
 Access is denied by default: a profile is reachable only by a user holding one of the
 roles it names, and a profile naming no roles is rejected at startup.
@@ -23,9 +26,10 @@ everything issued before.
 
 ## Requirements
 
-- a reverse proxy that terminates SSO and sets the configured `X-Auth-*` headers
+- an OpenID Connect provider (or, in proxy mode, a reverse proxy that sets the
+  configured `X-Auth-*` headers)
 - an OpenVPN server configured to read the generated `client-config-dir` and rules
-- a CA keypair to sign client certificates
+- a CA keypair to sign client certificates, and an SSH CA key for SSH profiles
 
 ## Build and run
 
@@ -49,5 +53,8 @@ Flags: `--config`, `--log-level`, `--version`, and the two `-dev-*` flags above.
 - [Example config](configs/conf.yaml)
 - [Helm chart](deployment/helm)
 
-The chart requires `ca.existingSecret` and `openvpn.existingSecret`, and renders the
-traffic path Ingress → SSO proxy `:8000` → portal `127.0.0.1:9000`.
+The chart requires `ca.existingSecret`, `openvpn.existingSecret` and
+`auth.existingSecret`, and renders the traffic path Ingress → Gruff `:9000`.
+
+`/setup` shows the server-side configuration your hosts need: `TrustedUserCAKeys`
+and `AuthorizedPrincipalsFile` for sshd, and the OpenVPN server directives.

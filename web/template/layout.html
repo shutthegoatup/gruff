@@ -25,7 +25,7 @@
             {{ . }}
           </span>
         {{ end }}
-        {{ with .LogoutURL }}<a href="{{ . }}" class="px-2 py-1 hover:bg-amber hover:text-ink">Log out</a>{{ end }}
+        {{ if .CanLogout }}<a href="{{ .LogoutURL }}" class="px-2 py-1 hover:bg-amber hover:text-ink">Log out</a>{{ end }}
       </div>
     </nav>
   </header>

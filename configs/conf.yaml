@@ -8,6 +8,33 @@
 listen: 127.0.0.1:9000
 banner: Gruff
 
+#
+# How Gruff establishes who you are.
+#
+#   proxy  (default)  Trust X-Auth-* headers from an SSO proxy in front. Gruff
+#                     authenticates nobody, so it must never be directly
+#                     reachable - hence the loopback listen address above.
+#
+#   oidc              Gruff runs the OpenID Connect code flow itself and holds
+#                     the session. It is meant to be exposed; listen on :9000.
+#                     Logout works in this mode because Gruff owns the session.
+#
+auth:
+  mode: proxy
+
+  # mode: oidc
+  # issuer: https://auth.example.com/realms/main
+  # client-id: gruff
+  # client-secret-env: GRUFF_CLIENT_SECRET
+  # redirect-url: https://gruff.example.com/auth/callback
+  # roles-claim: groups
+  # username-claim: preferred_username
+  # session-lifetime: 8h
+  #
+  # 32 random bytes; rotating this signs everyone out at once.
+  #   head -c 32 /dev/urandom | base64 > /etc/gruff/session.key
+  # session-key-file: /etc/gruff/session.key
+
 # Gruff holds no session in trusted-header mode, so it cannot log anyone out.
 # Set this only to a URL that actually ends the session - your proxy's sign-out
 # endpoint, not the IdP's - otherwise leave it unset and no button is shown.

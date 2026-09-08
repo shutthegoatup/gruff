@@ -3,6 +3,7 @@ package portal
 import (
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/shutthegoatup/gruff/web"
 )
@@ -22,16 +23,46 @@ func (p *Portal) Handler() http.Handler {
 	mux.HandleFunc("GET /setup", p.handleSetup)
 	mux.HandleFunc("GET /healthz", p.handleHealth)
 
+	// Only mounted when Gruff owns the session; in proxy mode there is nothing
+	// for these to do and they would be misleading.
+	if p.oidc != nil {
+		mux.HandleFunc("GET /auth/login", p.handleLogin)
+		mux.HandleFunc("GET /auth/callback", p.handleCallback)
+		mux.HandleFunc("POST /auth/logout", p.handleLogout)
+		mux.HandleFunc("GET /auth/logout", p.handleLogout)
+	}
+
 	static, err := fs.Sub(web.Files, "static")
 	if err != nil {
 		panic("web: static assets missing from embedded FS: " + err.Error())
 	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 
-	// Ordering matters: CSRF protection must see the request before any
-	// handler acts on it, and security headers must be set on every response
-	// including those the CSRF layer rejects.
-	return securityHeaders(http.NewCrossOriginProtection().Handler(mux))
+	// Ordering matters, outermost first: security headers must be set on every
+	// response, including those the layers below reject; CSRF protection must
+	// see a request before any handler acts on it; and the session gate sits
+	// innermost so the auth routes themselves stay reachable.
+	return securityHeaders(http.NewCrossOriginProtection().Handler(p.gate(mux)))
+}
+
+// gate applies the session requirement to everything except the routes needed
+// to establish a session in the first place, and the health probe.
+func (p *Portal) gate(mux *http.ServeMux) http.Handler {
+	if p.oidc == nil {
+		return mux
+	}
+
+	guarded := p.requireSession(mux)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/healthz",
+			strings.HasPrefix(r.URL.Path, "/auth/"),
+			strings.HasPrefix(r.URL.Path, "/static/"):
+			mux.ServeHTTP(w, r)
+		default:
+			guarded.ServeHTTP(w, r)
+		}
+	})
 }
 
 func (p *Portal) handleHealth(w http.ResponseWriter, r *http.Request) {

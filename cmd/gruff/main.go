@@ -14,7 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shutthegoatup/gruff/internal/authsession"
 	"github.com/shutthegoatup/gruff/internal/config"
+	"github.com/shutthegoatup/gruff/internal/oidcauth"
 	"github.com/shutthegoatup/gruff/internal/openvpn"
 	"github.com/shutthegoatup/gruff/internal/pki"
 	"github.com/shutthegoatup/gruff/internal/portal"
@@ -78,7 +80,17 @@ func run() error {
 		log.Info("wrote OpenVPN profile files", "path", cfg.ConfigdirPath, "profiles", len(cfg.Profiles))
 	}
 
-	p, err := portal.New(cfg, ca, sshCA, log)
+	auth, err := setupAuth(cfg, log)
+	if err != nil {
+		return err
+	}
+
+	p, err := portal.New(cfg, log, portal.Options{
+		CA:           ca,
+		SSHCA:        sshCA,
+		OIDC:         auth.oidc,
+		SessionCodec: auth.codec,
+	})
 	if err != nil {
 		return err
 	}
@@ -124,6 +136,47 @@ func serve(srv *http.Server, log *slog.Logger) error {
 		return fmt.Errorf("shutdown: %w", err)
 	}
 	return nil
+}
+
+// authComponents is whichever of the authentication collaborators the
+// configured mode needs. Both are nil in trusted-header mode.
+type authComponents struct {
+	oidc  *oidcauth.Authenticator
+	codec *authsession.Codec
+}
+
+// setupAuth builds the authenticator for the configured mode.
+//
+// In proxy mode there is nothing to build: Gruff authenticates nobody and
+// trusts its headers. In OIDC mode it discovers the provider up front, so a
+// bad issuer or an unreachable discovery document fails the process at startup
+// rather than the first sign-in.
+func setupAuth(cfg *config.Config, log *slog.Logger) (authComponents, error) {
+	if cfg.Auth.Mode != config.AuthOIDC {
+		log.Warn("trusted-header mode: Gruff authenticates nobody and must only be reachable through its proxy",
+			"listen", cfg.Listen)
+		return authComponents{}, nil
+	}
+
+	codec, err := authsession.NewCodec(cfg.Auth.SessionKey(), !cfg.Auth.InsecureCookies)
+	if err != nil {
+		return authComponents{}, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	auth, err := oidcauth.New(ctx, &cfg.Auth, codec)
+	if err != nil {
+		return authComponents{}, err
+	}
+
+	log.Info("oidc mode", "issuer", cfg.Auth.Issuer, "client_id", cfg.Auth.ClientID,
+		"session_lifetime", cfg.Auth.SessionDuration())
+	if cfg.Auth.InsecureCookies {
+		log.Warn("insecure-cookies is set: session cookies will be sent over plain HTTP")
+	}
+	return authComponents{oidc: auth, codec: codec}, nil
 }
 
 // loadSSHCA resolves the SSH certificate authority, which is only needed when

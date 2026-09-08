@@ -1,24 +1,21 @@
 #
 # Helm chart example config.
 #
-# Traffic path: Ingress -> sso (:8000) -> portal (127.0.0.1:9000)
+# Traffic path: Ingress -> gruff (:9000)
 #
-# The portal authenticates nobody; it trusts the X-Auth-* headers the SSO proxy
-# sets. It therefore binds loopback only, and no Service targets it directly.
-# Do not expose service.portal.internalPort to anything but the sidecar.
+# Gruff authenticates users itself via OpenID Connect, so there is no sidecar
+# and it is meant to be exposed. Set auth.mode to proxy in the config below if
+# you would rather front it with your own SSO proxy - then bind it to loopback
+# and point the Service at the proxy instead.
 #
 image:
-  sso: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
-  portal: quay.io/shutthegoatup/gruff:0.3.0
+  gruff: quay.io/shutthegoatup/gruff:0.3.0
   openvpn: shutthegoatup/openvpn
 
 service:
-  # Port the SSO proxy listens on. This is what the Ingress targets.
-  sso:
-    port: 8000
-  # Loopback port the portal listens on, reachable only from the SSO sidecar.
-  portal:
-    internalPort: 9000
+  # Port Gruff listens on; this is what the Ingress targets.
+  gruff:
+    port: 9000
   openvpn:
     internalPort: 1194
     externalPort: 1194
@@ -48,11 +45,21 @@ ca:
 openvpn:
   existingSecret: ""
 
+##
+# OIDC client secret and the session key, both from Secrets rather than this
+# file. The session key is 32 random bytes; rotating it signs everyone out.
+#
+#   kubectl create secret generic gruff-auth \
+#     --from-literal=client-secret=... \
+#     --from-file=session.key=<(head -c 32 /dev/urandom)
+##
+auth:
+  existingSecret: ""
+  clientSecretKey: client-secret
+  sessionKeyKey: session.key
+
 resources:
-  portal:
-    requests: {cpu: 10m, memory: 32Mi}
-    limits: {memory: 128Mi}
-  sso:
+  gruff:
     requests: {cpu: 10m, memory: 32Mi}
     limits: {memory: 128Mi}
 
@@ -74,14 +81,10 @@ config: |
     # Loopback only: the SSO sidecar is the sole permitted client.
     listen: 127.0.0.1:9000
     banner: Gruff
-    # oauth2-proxy's own sign-out: this ends the proxy session, then hands off
-    # to the IdP. Pointing straight at the IdP would leave the proxy session up.
-    logout-url: https://gruff.example.com/oauth2/sign_out?rd=https%3A%2F%2Fauth.example.com%2Frealms%2Fmain%2Fprotocol%2Fopenid-connect%2Flogout
+    # Where the provider returns to after signing out. Gruff ends its own
+    # session and then hands off to the provider's end-session endpoint.
+    logout-url: https://gruff.example.com/
     help-url: https://github.com/shutthegoatup/gruff/issues
-
-    fullname-header: X-Auth-Request-Preferred-Username
-    username-header: X-Auth-Request-User
-    roles-header: X-Auth-Request-Groups
 
     ca-certificate-file: /etc/tls/ca/cert.pem
     ca-private-file: /etc/tls/ca/key.pem

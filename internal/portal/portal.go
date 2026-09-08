@@ -17,7 +17,9 @@ import (
 	"path"
 	"strings"
 
+	"github.com/shutthegoatup/gruff/internal/authsession"
 	"github.com/shutthegoatup/gruff/internal/config"
+	"github.com/shutthegoatup/gruff/internal/oidcauth"
 	"github.com/shutthegoatup/gruff/internal/pki"
 	"github.com/shutthegoatup/gruff/internal/sshca"
 	"github.com/shutthegoatup/gruff/web"
@@ -31,22 +33,52 @@ var pages = []string{"profiles.html", "rules.html", "issued.html", "ssh.html", "
 // Portal holds everything the handlers need. Nothing here is package state, so
 // a request can never observe or corrupt another request's view of it.
 type Portal struct {
-	cfg       *config.Config
-	ca        *pki.CA
-	sshCA     *sshca.CA
-	log       *slog.Logger
+	cfg   *config.Config
+	ca    *pki.CA
+	sshCA *sshca.CA
+	log   *slog.Logger
+
+	// oidc is nil in trusted-header mode, which is what every "which mode am
+	// I in" check keys off.
+	oidc         *oidcauth.Authenticator
+	sessionCodec *authsession.Codec
+
 	sessions  Store
 	templates map[string]*template.Template
 }
 
-// New builds a portal from validated configuration and its loaded authorities.
-// Either CA may be nil when no profile of that kind is configured.
-func New(cfg *config.Config, ca *pki.CA, sshCA *sshca.CA, log *slog.Logger) (*Portal, error) {
+// Options carries the collaborators a portal needs beyond its configuration.
+// Any of them may be nil when the corresponding feature is not configured.
+type Options struct {
+	CA           *pki.CA
+	SSHCA        *sshca.CA
+	OIDC         *oidcauth.Authenticator
+	SessionCodec *authsession.Codec
+	Store        Store
+}
+
+// New builds a portal from validated configuration and its collaborators.
+func New(cfg *config.Config, log *slog.Logger, opts Options) (*Portal, error) {
 	templates, err := parseTemplates(web.Files)
 	if err != nil {
 		return nil, err
 	}
-	return &Portal{cfg: cfg, ca: ca, sshCA: sshCA, log: log, sessions: &MemoryStore{}, templates: templates}, nil
+
+	store := opts.Store
+	if store == nil {
+		store = &MemoryStore{}
+	}
+
+	return &Portal{
+		cfg:          cfg,
+		ca:           opts.CA,
+		sshCA:        opts.SSHCA,
+		log:          log,
+		oidc:         opts.OIDC,
+		sessionCodec: opts.SessionCodec,
+		sessions:     store,
+		templates:    templates,
+	}, nil
 }
 
 // parseTemplates builds one template set per page. Each page defines its own
@@ -61,21 +93,6 @@ func parseTemplates(fsys fs.FS) (map[string]*template.Template, error) {
 		templates[name] = t
 	}
 	return templates, nil
-}
-
-// identity is the caller as asserted by the upstream SSO proxy.
-type identity struct {
-	Username string
-	Fullname string
-	Roles    []string
-}
-
-func (p *Portal) identify(r *http.Request) identity {
-	return identity{
-		Username: r.Header.Get(p.cfg.UsernameHeader),
-		Fullname: r.Header.Get(p.cfg.FullnameHeader),
-		Roles:    config.Roles(r.Header.Get(p.cfg.RolesHeader)),
-	}
 }
 
 // render executes a page into a buffer before writing it, so that a template
@@ -106,6 +123,7 @@ type page struct {
 	Username  string
 	Initials  string
 	LogoutURL string
+	CanLogout bool
 	HelpURL   string
 }
 
@@ -116,7 +134,8 @@ func (p *Portal) page(id identity) page {
 		Brand:     p.cfg.Banner,
 		Username:  name,
 		Initials:  initials(name),
-		LogoutURL: p.cfg.LogoutURL,
+		LogoutURL: p.logoutHref(),
+		CanLogout: p.canLogout(),
 		HelpURL:   p.cfg.HelpURL,
 	}
 }

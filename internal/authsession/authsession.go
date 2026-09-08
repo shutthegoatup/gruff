@@ -22,10 +22,24 @@ import (
 	"time"
 )
 
-// CookieName is the cookie the session travels in. The __Host- prefix binds it
-// to this exact origin: browsers reject it unless it is Secure, path=/ and
-// carries no Domain, which stops a sibling subdomain from setting one.
+// CookieName is the cookie the session travels in over HTTPS. The __Host-
+// prefix binds it to this exact origin: browsers reject it unless it is
+// Secure, path=/ and carries no Domain, which stops a sibling subdomain from
+// setting one.
 const CookieName = "__Host-gruff"
+
+// InsecureCookieName is used only when the Secure attribute is off, for local
+// development over plain HTTP. The __Host- prefix requires Secure, so keeping
+// it there would produce a cookie every browser refuses to store.
+const InsecureCookieName = "gruff"
+
+// Name is the cookie name this codec issues and reads.
+func (c *Codec) Name() string {
+	if c.secure {
+		return CookieName
+	}
+	return InsecureCookieName
+}
 
 // maxCookieSize guards against emitting a cookie browsers will silently drop.
 const maxCookieSize = 3800
@@ -86,6 +100,38 @@ func GenerateKey() ([]byte, error) {
 	return key, nil
 }
 
+// SealRaw encrypts arbitrary bytes under the same key, for cookies that are not
+// sessions - the in-flight login state, for instance. Keeping them on one key
+// means rotating it invalidates everything at once.
+func (c *Codec) SealRaw(plaintext []byte) (string, error) {
+	nonce := make([]byte, c.aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", fmt.Errorf("generate nonce: %w", err)
+	}
+
+	sealed := c.aead.Seal(nonce, nonce, plaintext, nil)
+	value := base64.RawURLEncoding.EncodeToString(sealed)
+	if len(value) > maxCookieSize {
+		return "", fmt.Errorf("cookie is %d bytes, over the %d limit", len(value), maxCookieSize)
+	}
+	return value, nil
+}
+
+// OpenRaw reverses [Codec.SealRaw].
+func (c *Codec) OpenRaw(value string) ([]byte, error) {
+	sealed, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(sealed) < c.aead.NonceSize() {
+		return nil, ErrInvalid
+	}
+
+	nonce, ciphertext := sealed[:c.aead.NonceSize()], sealed[c.aead.NonceSize():]
+	plaintext, err := c.aead.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, ErrInvalid
+	}
+	return plaintext, nil
+}
+
 // Seal encodes and encrypts a session into a cookie ready to be set.
 func (c *Codec) Seal(u User) (*http.Cookie, error) {
 	plaintext, err := json.Marshal(u)
@@ -93,19 +139,13 @@ func (c *Codec) Seal(u User) (*http.Cookie, error) {
 		return nil, fmt.Errorf("encode session: %w", err)
 	}
 
-	nonce := make([]byte, c.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("generate nonce: %w", err)
-	}
-
-	sealed := c.aead.Seal(nonce, nonce, plaintext, nil)
-	value := base64.RawURLEncoding.EncodeToString(sealed)
-	if len(value) > maxCookieSize {
-		return nil, fmt.Errorf("session cookie is %d bytes, over the %d limit", len(value), maxCookieSize)
+	value, err := c.SealRaw(plaintext)
+	if err != nil {
+		return nil, err
 	}
 
 	return &http.Cookie{
-		Name:     CookieName,
+		Name:     c.Name(),
 		Value:    value,
 		Path:     "/",
 		Expires:  u.Expires,
@@ -118,20 +158,14 @@ func (c *Codec) Seal(u User) (*http.Cookie, error) {
 
 // Open reads and verifies the session on a request.
 func (c *Codec) Open(r *http.Request) (User, error) {
-	cookie, err := r.Cookie(CookieName)
+	cookie, err := r.Cookie(c.Name())
 	if err != nil {
 		return User{}, ErrNoSession
 	}
 
-	sealed, err := base64.RawURLEncoding.DecodeString(cookie.Value)
-	if err != nil || len(sealed) < c.aead.NonceSize() {
-		return User{}, ErrInvalid
-	}
-
-	nonce, ciphertext := sealed[:c.aead.NonceSize()], sealed[c.aead.NonceSize():]
-	plaintext, err := c.aead.Open(nil, nonce, ciphertext, nil)
+	// Tampered, truncated, or sealed under a rotated key: all the same to us.
+	plaintext, err := c.OpenRaw(cookie.Value)
 	if err != nil {
-		// Tampered, truncated, or sealed under a rotated key. All the same to us.
 		return User{}, ErrInvalid
 	}
 
@@ -150,7 +184,7 @@ func (c *Codec) Open(r *http.Request) (User, error) {
 // Clear returns a cookie that removes any existing session.
 func (c *Codec) Clear() *http.Cookie {
 	return &http.Cookie{
-		Name:     CookieName,
+		Name:     c.Name(),
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,

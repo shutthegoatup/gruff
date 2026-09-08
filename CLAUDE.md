@@ -29,11 +29,28 @@ worktree-scoped — check nothing else is using them before starting, and say wh
 
 This is the thing to understand before changing anything.
 
-**The portal authenticates nobody.** It reads the caller's identity from the
-`X-Auth-*` headers named in config, which an upstream SSO proxy is trusted to set.
-Anything that can reach the listener directly can assert its own roles, so `listen`
-defaults to loopback and the Helm chart exposes only the SSO sidecar — no Service
-targets the portal's port. Preserve both properties.
+**Two authentication modes, set by `auth.mode`.** Everything downstream works from
+a resolved `identity` and does not care which produced it.
+
+- `oidc` — Gruff runs the OpenID Connect code flow itself and owns the session.
+  It is meant to be exposed. This is what the Helm chart deploys, and the only
+  mode where logging out is possible.
+- `proxy` (default) — Gruff **authenticates nobody**, reading identity from the
+  `X-Auth-*` headers an upstream SSO proxy is trusted to set. Anything that can
+  reach the listener can assert its own roles, so `listen` defaults to loopback
+  and it must never be directly exposed.
+
+`p.oidc == nil` is what every "which mode am I in" check keys off.
+
+The OIDC flow keeps no server-side state: CSRF state, PKCE verifier and nonce all
+travel in a short-lived encrypted cookie, so a login begun on one replica finishes
+on another. Sessions are AES-GCM cookies, expiry enforced from the authenticated
+payload rather than the cookie attribute a client controls; rotating the session
+key signs everyone out.
+
+Cookie names drop the `__Host-` prefix when `insecure-cookies` is set, because
+that prefix *requires* `Secure` — keeping it would emit a cookie every browser
+refuses to store, and local development would silently never log in.
 
 Two invariants the tests pin deliberately, because earlier versions broke them:
 
@@ -47,11 +64,16 @@ Two invariants the tests pin deliberately, because earlier versions broke them:
 Unknown and forbidden profiles return identical responses so the portal does not
 disclose which profiles exist. `/issued` is scoped to the requesting user.
 
+A control that cannot work is not shown: log out appears only when Gruff owns the
+session (oidc) or an operator configured a URL that genuinely ends one (proxy).
+
 ## Architecture
 
 ```
 cmd/gruff           flags, wiring, graceful shutdown
 internal/config     schema, parsing, strict startup validation
+internal/authsession  encrypted stateless session cookies
+internal/oidcauth     OpenID Connect code flow with PKCE
 internal/pki        X.509 CA loading and VPN certificate issuance
 internal/sshca      SSH CA loading and SSH certificate issuance
 internal/portal     handlers, routing, middleware, session store, setup page
@@ -103,16 +125,19 @@ a test asserts no private key can appear there.
 
 ## Dependencies
 
-Two, deliberately: `go.yaml.in/yaml/v3` and `golang.org/x/crypto` (for SSH, which
-the standard library does not cover). Routing is `net/http.ServeMux` patterns,
+`go.yaml.in/yaml/v3`, `golang.org/x/crypto` (SSH), and `go-oidc`/`x/oauth2` for
+the OIDC flow. Token verification and JWKS handling are deliberately not
+hand-rolled. Routing is `net/http.ServeMux` patterns,
 CSRF is `http.CrossOriginProtection`, logging is `log/slog`. Prefer the standard
 library over adding a dependency here, and keep the CSS self-hosted — the strict
 `default-src 'none'` CSP depends on there being no external origins.
 
 ## Deployment
 
-`deployment/helm/gruff` runs oauth2-proxy, the portal and OpenVPN in one pod.
-It fails rendering without `ca.existingSecret` and `openvpn.existingSecret`. The
+`deployment/helm/gruff` runs Gruff and OpenVPN in one pod. There is no SSO
+sidecar: Gruff authenticates its own callers, and the Ingress targets it directly.
+It fails rendering without `ca.existingSecret`, `openvpn.existingSecret` and
+`auth.existingSecret`. The
 whole portal config, including the `.ovpn` template, is inline in `values.yaml` under
 `config:`; Go template braces there need escaping as `{{ "{{ .Session.X }}" }}` so
 Helm passes them through.

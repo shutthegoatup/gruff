@@ -1,5 +1,4 @@
-# Targets the SSO proxy, never the portal: the portal binds loopback and trusts
-# whatever identity headers it is given.
+# Targets Gruff directly: it authenticates its own callers.
 apiVersion: v1
 kind: Service
 metadata:
@@ -10,8 +9,8 @@ spec:
   type: ClusterIP
   ports:
   - name: http
-    port: {{ .Values.service.sso.port }}
-    targetPort: {{ .Values.service.sso.port }}
+    port: {{ .Values.service.gruff.port }}
+    targetPort: {{ .Values.service.gruff.port }}
     protocol: TCP
   selector:
     app: {{ template "gruff.fullname" . }}

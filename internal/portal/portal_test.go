@@ -78,7 +78,7 @@ func newTestPortal(t *testing.T) http.Handler {
 		t.Fatalf("generate SSH CA: %v", err)
 	}
 
-	p, err := New(cfg, ca, sshCA, slog.New(slog.DiscardHandler))
+	p, err := New(cfg, slog.New(slog.DiscardHandler), Options{CA: ca, SSHCA: sshCA})
 	if err != nil {
 		t.Fatalf("New(): %v", err)
 	}

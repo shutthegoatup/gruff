@@ -243,6 +243,8 @@ func (p SSHProfile) validate() error {
 type Config struct {
 	Listen string `yaml:"listen"`
 
+	Auth Auth `yaml:"auth"`
+
 	FullnameHeader string `yaml:"fullname-header"`
 	UsernameHeader string `yaml:"username-header"`
 	RolesHeader    string `yaml:"roles-header"`
@@ -324,6 +326,10 @@ func (c *Config) validate() error {
 	c.UsernameHeader = cmp.Or(c.UsernameHeader, defaultUsernameHeader)
 	c.RolesHeader = cmp.Or(c.RolesHeader, defaultRolesHeader)
 	c.Banner = cmp.Or(c.Banner, defaultBanner)
+
+	if err := c.Auth.validate(); err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
 
 	if len(c.Profiles) == 0 && len(c.SSHProfiles) == 0 {
 		return errors.New("no profiles configured")

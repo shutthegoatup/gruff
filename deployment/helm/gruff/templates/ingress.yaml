@@ -27,5 +27,5 @@ spec:
           service:
             name: {{ template "gruff.fullname" . }}-portal
             port:
-              number: {{ .Values.service.sso.port }}
+              number: {{ .Values.service.gruff.port }}
 {{- end }}
