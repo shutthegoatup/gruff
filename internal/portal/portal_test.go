@@ -12,6 +12,7 @@ import (
 
 	"github.com/shutthegoatup/gruff/internal/config"
 	"github.com/shutthegoatup/gruff/internal/pki"
+	"github.com/shutthegoatup/gruff/internal/sshca"
 )
 
 const testConfig = `
@@ -34,6 +35,18 @@ profiles:
     roles: [vpn-secret]
     routes:
       - 10.9.9.0/24
+ssh-profiles:
+  - name: bastion
+    description: Bastion Hosts
+    max-session: 1h
+    roles: [ssh-bastion]
+    principals: [deploy, ubuntu]
+    hosts: ["bastion.example.com"]
+  - name: dbadmin
+    description: Database Admin
+    max-session: 30m
+    roles: [ssh-dbadmin]
+    principals: [postgres]
 template: |
   # profile {{ .Session.Profile }} for {{ .Session.User }}
   <ca>
@@ -60,8 +73,12 @@ func newTestPortal(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatalf("generate CA: %v", err)
 	}
+	sshCA, err := sshca.Generate()
+	if err != nil {
+		t.Fatalf("generate SSH CA: %v", err)
+	}
 
-	p, err := New(cfg, ca, slog.New(slog.DiscardHandler))
+	p, err := New(cfg, ca, sshCA, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("New(): %v", err)
 	}

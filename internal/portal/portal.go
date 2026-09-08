@@ -19,31 +19,34 @@ import (
 
 	"github.com/shutthegoatup/gruff/internal/config"
 	"github.com/shutthegoatup/gruff/internal/pki"
+	"github.com/shutthegoatup/gruff/internal/sshca"
 	"github.com/shutthegoatup/gruff/web"
 )
 
 const layout = "layout.html"
 
 // pages are the page templates, each composed with the shared layout.
-var pages = []string{"profiles.html", "rules.html", "issued.html"}
+var pages = []string{"profiles.html", "rules.html", "issued.html", "ssh.html", "setup.html"}
 
 // Portal holds everything the handlers need. Nothing here is package state, so
 // a request can never observe or corrupt another request's view of it.
 type Portal struct {
 	cfg       *config.Config
 	ca        *pki.CA
+	sshCA     *sshca.CA
 	log       *slog.Logger
 	sessions  SessionStore
 	templates map[string]*template.Template
 }
 
-// New builds a portal from validated configuration and a loaded CA.
-func New(cfg *config.Config, ca *pki.CA, log *slog.Logger) (*Portal, error) {
+// New builds a portal from validated configuration and its loaded authorities.
+// Either CA may be nil when no profile of that kind is configured.
+func New(cfg *config.Config, ca *pki.CA, sshCA *sshca.CA, log *slog.Logger) (*Portal, error) {
 	templates, err := parseTemplates(web.Files)
 	if err != nil {
 		return nil, err
 	}
-	return &Portal{cfg: cfg, ca: ca, log: log, templates: templates}, nil
+	return &Portal{cfg: cfg, ca: ca, sshCA: sshCA, log: log, templates: templates}, nil
 }
 
 // parseTemplates builds one template set per page. Each page defines its own

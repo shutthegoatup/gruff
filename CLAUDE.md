@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```sh
 make check          # go vet + gofmt check + go test -race ./...  (what CI runs)
 make test           # go test -race ./...
-make build          # -> ./portal
+make build          # -> ./gruff
 make vulncheck      # govulncheck
 go test -race ./internal/portal -run TestIssueDenies   # single test
 ```
@@ -16,7 +16,7 @@ Run the binary from anywhere — templates and CSS are embedded, so there is no
 working-directory dependency:
 
 ```sh
-./portal --config configs/conf.yaml --dev-generate-ca --dev-ca-dir tmp/tls
+./gruff --config configs/conf.yaml --dev-generate-ca --dev-ca-dir tmp/tls
 ```
 
 ### Exclusive resources
@@ -50,12 +50,13 @@ disclose which profiles exist. `/issued` is scoped to the requesting user.
 ## Architecture
 
 ```
-cmd/gruff      flags, wiring, graceful shutdown
+cmd/gruff           flags, wiring, graceful shutdown
 internal/config     schema, parsing, strict startup validation
-internal/pki        CA loading and client certificate issuance
-internal/portal     handlers, routing, middleware, session store
+internal/pki        X.509 CA loading and VPN certificate issuance
+internal/sshca      SSH CA loading and SSH certificate issuance
+internal/portal     handlers, routing, middleware, session store, setup page
 internal/openvpn    client-config-dir routes and iptables rule generation
-web                 templates + CSS, embedded via //go:embed
+web                 templates + CSS + fonts, embedded via //go:embed
 ```
 
 `portal.Portal` holds config, CA, logger and sessions as fields; handlers are methods.
@@ -83,9 +84,27 @@ The `.ovpn` body is rendered with `text/template` (it is not HTML) from an
 operator-supplied template parsed at startup; the web pages use `html/template`,
 parsed once into one template set per page since each defines its own `body`.
 
+## Two credential types
+
+VPN and SSH grants are independent: `profiles` and `ssh-profiles` are separate
+config blocks with separate roles, so holding a network does not imply login on its
+hosts. Both go through the same deny-by-default `AllowedFor`, and both issue
+ephemeral credentials Gruff does not retain.
+
+SSH certificates carry `user@profile` as the key ID, so sshd logs the person rather
+than an anonymous key, and principals come from config rather than the username.
+The bundle ships as a tarball because that is the only delivery that carries the
+0600 the private key needs through to disk.
+
+`/setup` renders the server-side configuration an operator needs - `TrustedUserCAKeys`,
+`AuthorizedPrincipalsFile`, the OpenVPN server directives - so a deployment outside
+the bundled Helm chart has everything it needs. It publishes public material only;
+a test asserts no private key can appear there.
+
 ## Dependencies
 
-One, deliberately: `go.yaml.in/yaml/v3`. Routing is `net/http.ServeMux` patterns,
+Two, deliberately: `go.yaml.in/yaml/v3` and `golang.org/x/crypto` (for SSH, which
+the standard library does not cover). Routing is `net/http.ServeMux` patterns,
 CSRF is `http.CrossOriginProtection`, logging is `log/slog`. Prefer the standard
 library over adding a dependency here, and keep the CSS self-hosted — the strict
 `default-src 'none'` CSP depends on there being no external origins.

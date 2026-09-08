@@ -1,0 +1,83 @@
+{{ define "body" }}
+<div class="mb-8 flex flex-wrap items-center gap-4">
+  <h1 class="font-display text-3xl uppercase tracking-tight">SSH Access</h1>
+  <span class="bg-ink px-2.5 py-1 font-mono text-xs text-amber">{{ .GrantedCount }} / {{ len .Profiles }} GRANTED</span>
+</div>
+
+<div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+{{ range .Profiles }}
+  {{ if .Permitted }}
+  <article class="slab flex flex-col border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
+    <div class="flex items-stretch border-b-[3px] border-ink">
+      <h2 class="flex-1 px-3.5 py-3 font-display text-lg uppercase">{{ .Description }}</h2>
+      <span class="grid place-items-center border-l-[3px] border-ink bg-amber px-3 text-[10px] font-bold uppercase tracking-widest">Granted</span>
+    </div>
+
+    <p class="px-3.5 pt-3 font-mono text-xs text-grey">{{ .Name }}</p>
+
+    <div class="flex gap-2.5 p-3.5">
+      <div class="flex-1 border-2 border-ink px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-grey">Session</div>
+        <div class="font-display text-lg leading-tight tabular-nums">{{ .Duration.Human }}</div>
+      </div>
+      <div class="flex-1 border-2 border-ink px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-grey">Logins</div>
+        <div class="font-display text-lg leading-tight tabular-nums">{{ len .Principals }}</div>
+      </div>
+    </div>
+
+    <div class="flex-1 px-3.5">
+      <div class="border-t-2 border-ink py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-grey">Log in as</div>
+        <div class="mt-1.5 flex flex-wrap gap-1.5">
+          {{ range .Principals }}<code class="bg-ink px-1.5 py-0.5 font-mono text-xs text-amber">{{ . }}</code>{{ end }}
+        </div>
+      </div>
+      {{ with .Hosts }}
+      <div class="border-t-2 border-ink py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-grey">Hosts</div>
+        <div class="mt-1 font-mono text-xs">{{ range . }}<div>{{ . }}</div>{{ end }}</div>
+      </div>
+      {{ end }}
+    </div>
+
+    <div class="mt-auto flex p-3.5">
+      <form method="post" action="/ssh/{{ .Name }}/issue" class="ml-auto">
+        <button type="submit"
+                class="press border-2 border-ink bg-amber px-3.5 py-2 text-[11px] font-bold uppercase tracking-widest shadow-[3px_3px_0_var(--black)] hover:bg-amber-deep">
+          Issue &#9654;
+        </button>
+      </form>
+    </div>
+  </article>
+
+  {{ else }}
+  <article class="slab flex flex-col border-[3px] border-stone-line bg-stone shadow-[7px_7px_0_#b9b3a1]">
+    <div class="flex items-stretch border-b-[3px] border-stone-line">
+      <h2 class="flex-1 px-3.5 py-3 font-display text-lg uppercase text-stone-ink">{{ .Description }}</h2>
+      <span class="grid place-items-center border-l-[3px] border-stone-line bg-stone-line px-3 text-[10px] font-bold uppercase tracking-widest text-stone">Locked</span>
+    </div>
+
+    <p class="px-3.5 pt-3 font-mono text-xs text-stone-ink/70">{{ .Name }}</p>
+
+    <div class="flex-1 px-3.5 pt-3">
+      <div class="flex flex-wrap items-center gap-2 border-t-2 border-stone-line py-2 font-mono text-xs">
+        <span class="bg-stone-line px-1.5 py-0.5 font-sans text-[9px] font-bold uppercase tracking-widest text-stone">Role</span>
+        {{ range .Roles }}<span class="text-stone-ink">{{ . }}</span>{{ end }}
+      </div>
+      <p class="pt-2 text-[13px] text-stone-ink">You do not hold a role that grants this access.</p>
+    </div>
+
+    <div class="mt-auto p-3.5">
+      <a href="{{ $.HelpURL }}"
+         class="press block border-2 border-dashed border-stone-line px-3 py-2 text-center text-[11px] font-bold uppercase tracking-widest text-stone-ink hover:bg-stone-line hover:text-stone">
+        Request access
+      </a>
+    </div>
+  </article>
+  {{ end }}
+{{ else }}
+  <p class="font-mono text-sm text-grey">No SSH profiles are configured.</p>
+{{ end }}
+</div>
+{{ end }}

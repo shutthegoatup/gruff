@@ -15,6 +15,11 @@ fullname-header: X-Auth-Fullname
 username-header: X-Auth-Username
 roles-header: X-Auth-Roles
 
+# Required when ssh-profiles are configured. An OpenSSH private key; hosts
+# trust the matching public key via TrustedUserCAKeys. See /setup for the
+# exact sshd_config to deploy.
+# ssh-ca-private-file: tmp/tls/ssh/ca
+
 # Required. The portal will not start without a CA.
 # For local development use -dev-generate-ca -dev-ca-dir tmp/tls instead.
 # ca-certificate-file: tmp/tls/ca/cert.pem
@@ -51,6 +56,30 @@ profiles:
         port: 53
         protocol: udp
         action: ACCEPT
+
+# SSH access is granted separately from VPN access: holding a network does not
+# imply login on its hosts. Principals are the logins a certificate is valid
+# for; extensions default to permit-pty and permit-user-rc, so forwarding is
+# opt-in.
+ssh-profiles:
+  - name: bastion
+    description: Bastion Hosts
+    max-session: 8h
+    roles:
+      - ssh-bastion
+    principals:
+      - deploy
+    hosts:
+      - bastion.example.com
+  - name: dbadmin
+    description: Database Admin
+    max-session: 1h
+    roles:
+      - ssh-dbadmin
+    principals:
+      - postgres
+    extensions:
+      - permit-pty
 
 template: |
   #

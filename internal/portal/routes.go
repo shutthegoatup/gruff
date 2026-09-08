@@ -15,6 +15,11 @@ func (p *Portal) Handler() http.Handler {
 	mux.HandleFunc("GET /issued", p.handleIssued)
 	mux.HandleFunc("GET /profile/{profile}", p.handleProfile)
 	mux.HandleFunc("POST /profile/{profile}/issue", p.handleIssue)
+
+	mux.HandleFunc("GET /ssh", p.handleSSHProfiles)
+	mux.HandleFunc("POST /ssh/{profile}/issue", p.handleSSHIssue)
+
+	mux.HandleFunc("GET /setup", p.handleSetup)
 	mux.HandleFunc("GET /healthz", p.handleHealth)
 
 	static, err := fs.Sub(web.Files, "static")

@@ -11,12 +11,21 @@ import (
 // driven to exhaust memory by repeated issuance.
 const maxSessions = 1000
 
+// Kind distinguishes what an issued certificate grants.
+type Kind string
+
+const (
+	KindVPN Kind = "vpn"
+	KindSSH Kind = "ssh"
+)
+
 // Session records that a certificate was issued. It deliberately holds no key
 // material: the private key exists only for the life of the response that
 // carries it to the client.
 type Session struct {
 	User      string
 	Profile   string
+	Kind      Kind
 	Serial    string
 	ClientIP  string
 	IssuedAt  time.Time

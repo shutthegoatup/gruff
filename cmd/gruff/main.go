@@ -18,6 +18,7 @@ import (
 	"github.com/shutthegoatup/gruff/internal/openvpn"
 	"github.com/shutthegoatup/gruff/internal/pki"
 	"github.com/shutthegoatup/gruff/internal/portal"
+	"github.com/shutthegoatup/gruff/internal/sshca"
 )
 
 const shutdownGrace = 15 * time.Second
@@ -65,6 +66,11 @@ func run() error {
 		return err
 	}
 
+	sshCA, err := loadSSHCA(cfg, *generateCA, *caOutputDir, log)
+	if err != nil {
+		return err
+	}
+
 	if cfg.ConfigdirEnabled {
 		if err := openvpn.Write(cfg.ConfigdirPath, cfg.Profiles); err != nil {
 			return fmt.Errorf("write OpenVPN config dir: %w", err)
@@ -72,7 +78,7 @@ func run() error {
 		log.Info("wrote OpenVPN profile files", "path", cfg.ConfigdirPath, "profiles", len(cfg.Profiles))
 	}
 
-	p, err := portal.New(cfg, ca, log)
+	p, err := portal.New(cfg, ca, sshCA, log)
 	if err != nil {
 		return err
 	}
@@ -120,10 +126,47 @@ func serve(srv *http.Server, log *slog.Logger) error {
 	return nil
 }
 
+// loadSSHCA resolves the SSH certificate authority, which is only needed when
+// SSH profiles are configured. As with the X.509 CA, a missing one is fatal
+// rather than quietly generated.
+func loadSSHCA(cfg *config.Config, generate bool, outputDir string, log *slog.Logger) (*sshca.CA, error) {
+	if len(cfg.SSHProfiles) == 0 {
+		return nil, nil
+	}
+
+	if cfg.SSHCAPrivateFile != "" {
+		if generate {
+			return nil, errors.New("-dev-generate-ca conflicts with the configured ssh-ca-private-file")
+		}
+		return sshca.Load(cfg.SSHCAPrivateFile)
+	}
+
+	if !generate {
+		return nil, errors.New("ssh profiles are configured but ssh-ca-private-file is not set; pass -dev-generate-ca for development")
+	}
+	if outputDir == "" {
+		return nil, errors.New("-dev-generate-ca requires -dev-ca-dir")
+	}
+
+	log.Warn("generating a throwaway SSH CA; hosts trusting the previous key will reject new certificates", "dir", outputDir)
+	ca, err := sshca.Generate()
+	if err != nil {
+		return nil, err
+	}
+	if err := ca.WriteTo(outputDir); err != nil {
+		return nil, err
+	}
+	log.Info("ssh CA ready", "fingerprint", ca.Fingerprint())
+	return ca, nil
+}
+
 // loadCA resolves the signing CA. The portal refuses to start without one:
 // silently minting a trust anchor would leave an operator believing they had
 // configured the CA they meant to.
 func loadCA(cfg *config.Config, generate bool, outputDir string, log *slog.Logger) (*pki.CA, error) {
+	if len(cfg.Profiles) == 0 {
+		return nil, nil
+	}
 	if cfg.CACertificateFile != "" {
 		if generate {
 			return nil, errors.New("-dev-generate-ca conflicts with the configured ca-certificate-file")

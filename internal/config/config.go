@@ -162,6 +162,82 @@ func (p Profile) AllowedFor(roles []string) bool {
 	})
 }
 
+// validExtensions are the OpenSSH certificate extensions a profile may grant.
+// Anything outside this set is a configuration error rather than something
+// quietly passed to sshd.
+var validExtensions = []string{
+	"permit-X11-forwarding",
+	"permit-agent-forwarding",
+	"permit-port-forwarding",
+	"permit-pty",
+	"permit-user-rc",
+}
+
+// defaultExtensions is what a profile grants when it says nothing: an
+// interactive shell and nothing else. Forwarding is opt-in.
+var defaultExtensions = []string{"permit-pty", "permit-user-rc"}
+
+// principalName matches a POSIX-portable login name.
+var principalName = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+
+// SSHProfile is a named grant of SSH access: which logins a certificate is
+// valid for, for how long, and who may ask for one.
+type SSHProfile struct {
+	Name        string   `yaml:"name"`
+	Description string   `yaml:"description"`
+	Duration    Duration `yaml:"max-session"`
+	Roles       []string `yaml:"roles"`
+	Principals  []string `yaml:"principals"`
+	Extensions  []string `yaml:"extensions"`
+	Hosts       []string `yaml:"hosts"`
+}
+
+// AllowedFor reports whether any of the caller's roles grants this profile.
+// Access is denied by default, exactly as for VPN profiles.
+func (p SSHProfile) AllowedFor(roles []string) bool {
+	return slices.ContainsFunc(p.Roles, func(required string) bool {
+		return slices.Contains(roles, required)
+	})
+}
+
+// GrantedExtensions is the extension set to stamp into a certificate.
+func (p SSHProfile) GrantedExtensions() []string {
+	if len(p.Extensions) == 0 {
+		return defaultExtensions
+	}
+	return p.Extensions
+}
+
+func (p SSHProfile) validate() error {
+	if !profileName.MatchString(p.Name) {
+		return fmt.Errorf("name must match %s", profileName)
+	}
+	if len(p.Roles) == 0 {
+		return errors.New("no roles: a profile granting no roles is unreachable")
+	}
+	if len(p.Principals) == 0 {
+		return errors.New("no principals: a certificate valid for no login is useless")
+	}
+	for _, principal := range p.Principals {
+		if !principalName.MatchString(principal) {
+			return fmt.Errorf("principal %q must match %s", principal, principalName)
+		}
+	}
+	for _, ext := range p.Extensions {
+		if !slices.Contains(validExtensions, ext) {
+			return fmt.Errorf("extension %q must be one of %s", ext, strings.Join(validExtensions, ", "))
+		}
+	}
+	d := time.Duration(p.Duration)
+	if d <= 0 {
+		return errors.New("max-session must be greater than zero")
+	}
+	if d > MaxSessionDuration {
+		return fmt.Errorf("max-session %s exceeds the %s ceiling", d, MaxSessionDuration)
+	}
+	return nil
+}
+
 // Config is the fully validated portal configuration.
 type Config struct {
 	Listen string `yaml:"listen"`
@@ -173,11 +249,14 @@ type Config struct {
 	CACertificateFile string `yaml:"ca-certificate-file"`
 	CAPrivateFile     string `yaml:"ca-private-file"`
 
+	SSHCAPrivateFile string `yaml:"ssh-ca-private-file"`
+
 	ConfigdirEnabled bool   `yaml:"configdir-enabled"`
 	ConfigdirPath    string `yaml:"configdir-path"`
 
-	Profiles []Profile `yaml:"profiles"`
-	Template string    `yaml:"template"`
+	Profiles    []Profile    `yaml:"profiles"`
+	SSHProfiles []SSHProfile `yaml:"ssh-profiles"`
+	Template    string       `yaml:"template"`
 
 	Banner    string `yaml:"banner"`
 	LogoutURL string `yaml:"logout-url"`
@@ -215,6 +294,15 @@ func (c *Config) Profile(name string) (Profile, error) {
 	return c.Profiles[i], nil
 }
 
+// SSHProfile looks up an SSH profile by name.
+func (c *Config) SSHProfile(name string) (SSHProfile, error) {
+	i := slices.IndexFunc(c.SSHProfiles, func(p SSHProfile) bool { return p.Name == name })
+	if i < 0 {
+		return SSHProfile{}, fmt.Errorf("%q: %w", name, ErrNoProfile)
+	}
+	return c.SSHProfiles[i], nil
+}
+
 // ProfileTemplate is the operator-supplied .ovpn template, parsed at load time.
 func (c *Config) ProfileTemplate() *template.Template { return c.profileTemplate }
 
@@ -236,7 +324,7 @@ func (c *Config) validate() error {
 	c.RolesHeader = cmp.Or(c.RolesHeader, defaultRolesHeader)
 	c.Banner = cmp.Or(c.Banner, defaultBanner)
 
-	if len(c.Profiles) == 0 {
+	if len(c.Profiles) == 0 && len(c.SSHProfiles) == 0 {
 		return errors.New("no profiles configured")
 	}
 	if (c.CACertificateFile == "") != (c.CAPrivateFile == "") {
@@ -245,15 +333,18 @@ func (c *Config) validate() error {
 	if c.ConfigdirEnabled && c.ConfigdirPath == "" {
 		return errors.New("configdir-enabled requires configdir-path")
 	}
-	if c.Template == "" {
-		return errors.New("template is empty")
+	// The .ovpn template is only needed if VPN profiles are configured; an
+	// SSH-only deployment has nothing to render with it.
+	if len(c.Profiles) > 0 {
+		if c.Template == "" {
+			return errors.New("template is empty")
+		}
+		tmpl, err := template.New("profile").Parse(c.Template)
+		if err != nil {
+			return fmt.Errorf("parse template: %w", err)
+		}
+		c.profileTemplate = tmpl
 	}
-
-	tmpl, err := template.New("profile").Parse(c.Template)
-	if err != nil {
-		return fmt.Errorf("parse template: %w", err)
-	}
-	c.profileTemplate = tmpl
 
 	seen := make(map[string]bool, len(c.Profiles))
 	for i, p := range c.Profiles {
@@ -264,6 +355,17 @@ func (c *Config) validate() error {
 			return fmt.Errorf("duplicate profile %q", p.Name)
 		}
 		seen[p.Name] = true
+	}
+
+	sshSeen := make(map[string]bool, len(c.SSHProfiles))
+	for i, p := range c.SSHProfiles {
+		if err := p.validate(); err != nil {
+			return fmt.Errorf("ssh profile %d (%q): %w", i, p.Name, err)
+		}
+		if sshSeen[p.Name] {
+			return fmt.Errorf("duplicate ssh profile %q", p.Name)
+		}
+		sshSeen[p.Name] = true
 	}
 	return nil
 }

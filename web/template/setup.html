@@ -1,0 +1,64 @@
+{{ define "body" }}
+<div class="mb-8">
+  <h1 class="font-display text-3xl uppercase tracking-tight">Server setup</h1>
+  <p class="mt-2 max-w-2xl text-sm text-grey">
+    What a host needs in order to trust Gruff. Nothing here is secret &mdash; these are
+    public keys and configuration directives.
+  </p>
+</div>
+
+{{ if .HasSSH }}
+<section class="mb-8 border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
+  <h2 class="border-b-[3px] border-ink bg-ink px-4 py-2.5 font-display text-sm uppercase tracking-wider text-amber">SSH hosts</h2>
+
+  <div class="border-b-2 border-ink p-4">
+    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">1 &mdash; Install the CA public key</div>
+    <p class="mt-1 mb-2.5 text-sm">Write this to <code class="bg-field px-1 font-mono text-xs">/etc/ssh/gruff_ca.pub</code> on every host.</p>
+    <pre class="overflow-x-auto border-2 border-ink bg-field p-3 font-mono text-xs">{{ .SSHCAPublicKey }}</pre>
+    <p class="mt-2 font-mono text-[11px] text-grey">{{ .SSHFingerprint }}</p>
+  </div>
+
+  <div class="border-b-2 border-ink p-4">
+    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">2 &mdash; Trust it in sshd_config</div>
+    <pre class="mt-2.5 overflow-x-auto border-2 border-ink bg-field p-3 font-mono text-xs">{{ .SSHDConfig }}</pre>
+  </div>
+
+  <div class="p-4">
+    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">3 &mdash; Permit the principals</div>
+    <p class="mt-1 mb-2.5 text-sm">
+      A certificate may only log in as a principal listed for that account. Create one file
+      per login:
+    </p>
+    <div class="flex flex-col gap-2.5">
+      {{ range .PrincipalsFiles }}
+        <div class="border-2 border-ink">
+          <div class="border-b-2 border-ink bg-field px-3 py-1.5 font-mono text-[11px]">{{ .Path }}</div>
+          <pre class="overflow-x-auto p-3 font-mono text-xs">{{ .Content }}</pre>
+        </div>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ if .HasVPN }}
+<section class="border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
+  <h2 class="border-b-[3px] border-ink bg-ink px-4 py-2.5 font-display text-sm uppercase tracking-wider text-amber">OpenVPN server</h2>
+
+  <div class="border-b-2 border-ink p-4">
+    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">1 &mdash; Install the CA certificate</div>
+    <p class="mt-1 mb-2.5 text-sm">Write this to <code class="bg-field px-1 font-mono text-xs">/etc/openvpn/gruff-ca.pem</code>.</p>
+    <pre class="max-h-64 overflow-auto border-2 border-ink bg-field p-3 font-mono text-[11px] leading-snug">{{ .VPNCACertificate }}</pre>
+  </div>
+
+  <div class="p-4">
+    <div class="text-[10px] font-bold uppercase tracking-widest text-grey">2 &mdash; Server directives</div>
+    <pre class="mt-2.5 overflow-x-auto border-2 border-ink bg-field p-3 font-mono text-xs">{{ .OpenVPNConfig }}</pre>
+  </div>
+</section>
+{{ end }}
+
+{{ if and (not .HasSSH) (not .HasVPN) }}
+  <p class="font-mono text-sm text-grey">Nothing is configured yet.</p>
+{{ end }}
+{{ end }}
