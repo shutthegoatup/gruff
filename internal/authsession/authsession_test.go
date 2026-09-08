@@ -1,6 +1,7 @@
 package authsession
 
 import (
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -206,15 +207,60 @@ func TestNewCodecRejectsBadKeys(t *testing.T) {
 	}
 }
 
+// flipLast corrupts the sealed bytes, not the text encoding them. Flipping the
+// last base64 character is not the same thing: its low bits often encode
+// nothing, so the ciphertext survives unchanged and Open rightly accepts it.
 func flipLast(s string) string {
-	if s == "" {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil || len(raw) == 0 {
 		return s
 	}
-	b := []byte(s)
-	if b[len(b)-1] == 'A' {
-		b[len(b)-1] = 'B'
-	} else {
-		b[len(b)-1] = 'A'
+	raw[len(raw)-1] ^= 0x01
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+// A sealed value must have exactly one spelling. Non-strict base64 ignores the
+// trailing bits of the final character, so several distinct strings decode to
+// the same bytes and present as the same session. It is also what made the
+// tamper test above miss: flipping that character often changed nothing.
+func TestASealedValueHasOnlyOneSpelling(t *testing.T) {
+	t.Parallel()
+
+	c := newCodec(t)
+
+	// Nonce and tag are 28 bytes together, so a payload length divisible by
+	// three leaves four spare bits in the last base64 character.
+	sealed, err := c.SealRaw(SessionPurpose, []byte("012345678"))
+	if err != nil {
+		t.Fatalf("SealRaw(): %v", err)
 	}
-	return string(b)
+
+	variant, ok := withSlackBitsSet(sealed)
+	if !ok {
+		t.Fatal("no spare bits to set, so this test proves nothing")
+	}
+
+	if _, err := c.OpenRaw(SessionPurpose, variant); !errors.Is(err, ErrInvalid) {
+		t.Errorf("a second spelling of the same value was accepted: err = %v", err)
+	}
+}
+
+// withSlackBitsSet sets the padding bits in the final base64 character. The
+// bytes it decodes to are unchanged, so only a strict decoder notices.
+func withSlackBitsSet(s string) (string, bool) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return "", false
+	}
+	spare, ok := map[int]int{1: 0x0f, 2: 0x03}[len(raw)%3]
+	if !ok {
+		return "", false
+	}
+
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := strings.IndexByte(alphabet, s[len(s)-1])
+	if last < 0 || last|spare == last {
+		return "", false
+	}
+	return s[:len(s)-1] + string(alphabet[last|spare]), true
 }

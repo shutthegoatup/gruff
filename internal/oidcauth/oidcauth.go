@@ -243,9 +243,10 @@ func (a *Authenticator) sealFlow(f flow) (*http.Cookie, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode flow: %w", err)
 	}
-	// Reuse the session codec's key rather than introducing a second one; the
-	// flow is a different payload under the same authenticated encryption.
-	sealed, err := a.sessions.SealRaw(payload)
+	// One key for both cookies, with the purpose telling them apart. Without
+	// that separation this ciphertext - which any visitor can obtain, carrying
+	// a value they chose - would decrypt as a session.
+	sealed, err := a.sessions.SealRaw(authsession.FlowPurpose, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +269,7 @@ func (a *Authenticator) openFlow(r *http.Request) (flow, error) {
 	if err != nil {
 		return flow{}, ErrFlow
 	}
-	payload, err := a.sessions.OpenRaw(cookie.Value)
+	payload, err := a.sessions.OpenRaw(authsession.FlowPurpose, cookie.Value)
 	if err != nil {
 		return flow{}, ErrFlow
 	}
