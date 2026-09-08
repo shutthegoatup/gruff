@@ -29,6 +29,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # The OpenVPN integration test skips itself when the binary is absent,
+      # which would quietly retire the only end-to-end check of the VPN path.
+      - run: sudo apt-get update && sudo apt-get install -y openvpn
       - run: make test
 
   # The committed stylesheet must match what the templates produce, or the
