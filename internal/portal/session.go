@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -8,9 +9,14 @@ import (
 	"time"
 )
 
-// maxSessions bounds the in-memory audit list so that a long-running process
-// cannot be driven to exhaust memory by repeated issuance.
-const maxSessions = 1000
+// DefaultMaxSessions bounds the in-memory audit list so that a long-running
+// process cannot be driven to exhaust memory by repeated issuance.
+//
+// The bound is not free: a credential the store has forgotten cannot be revoked
+// through the portal, since a revocation is authorized by finding the serial
+// among the caller's own sessions. A deployment with more live credentials than
+// this wants a larger one, which is what gruff_sessions_tracked is for.
+const DefaultMaxSessions = 1000
 
 // Kind distinguishes what an issued certificate grants.
 type Kind string
@@ -85,9 +91,30 @@ type Store interface {
 // MemoryStore is the default Store: newest first, capped, and gone with the
 // process.
 type MemoryStore struct {
+	// Max is the most sessions to keep. Zero means DefaultMaxSessions.
+	Max int
+
 	mu       sync.Mutex
 	sessions []Session
 	revoked  []Revocation
+}
+
+func (s *MemoryStore) max() int {
+	if s.Max <= 0 {
+		return DefaultMaxSessions
+	}
+	return s.Max
+}
+
+// Tracked reports how many sessions are held and the bound they are held
+// against, so an operator can see the cap approaching before it starts costing
+// them revocations.
+func (s *MemoryStore) Tracked(_ context.Context) (held, limit int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.prune(time.Now())
+	return len(s.sessions), s.max(), nil
 }
 
 var _ Store = (*MemoryStore)(nil)
@@ -128,12 +155,48 @@ func (s *MemoryStore) All(_ context.Context) ([]Session, error) {
 }
 
 // prune drops expired entries and caps the list. Callers must hold s.mu.
+//
+// Over the bound it gives up whichever credentials expire soonest, not whichever
+// were issued longest ago. Those are not the same set once profiles have
+// different lifetimes, and the difference decides which credentials can still be
+// revoked: dropping an eight-hour certificate to keep a thousand half-hour ones
+// is exactly the wrong trade.
 func (s *MemoryStore) prune(now time.Time) {
 	s.sessions = slices.DeleteFunc(s.sessions, func(session Session) bool {
 		return session.Expired(now)
 	})
-	if len(s.sessions) > maxSessions {
-		clear(s.sessions[maxSessions:])
-		s.sessions = s.sessions[:maxSessions]
+
+	surplus := len(s.sessions) - s.max()
+	if surplus <= 0 {
+		return
 	}
+
+	order := make([]int, len(s.sessions))
+	for i := range order {
+		order[i] = i
+	}
+	// Soonest expiry goes first. The list is newest first, so a higher index is
+	// an older entry: that is the tie-break when lifetimes match, which is the
+	// ordinary case of one profile issuing everything.
+	slices.SortStableFunc(order, func(a, b int) int {
+		return cmp.Or(
+			s.sessions[a].ExpiresAt.Compare(s.sessions[b].ExpiresAt),
+			cmp.Compare(b, a),
+		)
+	})
+
+	doomed := make(map[int]bool, surplus)
+	for _, i := range order[:surplus] {
+		doomed[i] = true
+	}
+
+	// Rebuilt in place, so the list stays newest first for display.
+	kept := s.sessions[:0]
+	for i, session := range s.sessions {
+		if !doomed[i] {
+			kept = append(kept, session)
+		}
+	}
+	clear(s.sessions[len(kept):])
+	s.sessions = kept
 }

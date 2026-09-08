@@ -71,6 +71,11 @@ Beyond that:
   its hosts.
 - **No key retention.** An issued private key exists for the life of the response
   carrying it. The session list records metadata only.
+- **Revocation depends on the audit list.** A revocation is authorised by finding
+  the serial among the caller's own sessions, so a credential the list has
+  forgotten cannot be revoked through the portal. The default store keeps the
+  1000 with the most life left and is gone on restart; raise
+  `max-tracked-sessions` if `gruff_sessions_tracked` sits at the capacity.
 - **A CA is required.** Gruff will not start without one. `-dev-generate-ca` exists
   for local work and warns loudly; it mints a new trust anchor every run,
   invalidating everything issued before.

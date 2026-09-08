@@ -70,7 +70,7 @@ func New(cfg *config.Config, log *slog.Logger, opts Options) (*Portal, error) {
 
 	store := opts.Store
 	if store == nil {
-		store = &MemoryStore{}
+		store = &MemoryStore{Max: cfg.MaxTrackedSessions}
 	}
 
 	return &Portal{
