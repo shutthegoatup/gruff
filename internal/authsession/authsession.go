@@ -1,13 +1,8 @@
-// Package authsession carries a signed-in user in an encrypted cookie.
+// Package authsession carries a signed-in user in an AES-GCM cookie.
 //
-// The session is stateless by construction: everything needed to identify the
-// caller travels in the cookie, authenticated and encrypted with a key only
-// Gruff holds. That is what lets a restart, a redeploy or a second replica
-// serve an existing session without a shared database.
-//
-// The trade is that a session cannot be revoked server-side before it expires.
-// Lifetimes are therefore short, and the key can be rotated to invalidate every
-// outstanding session at once.
+// Stateless by construction, so a restart or a second replica serves an
+// existing session. The trade is no server-side revocation before expiry;
+// rotating the key invalidates every outstanding session.
 package authsession
 
 import (
@@ -22,16 +17,13 @@ import (
 	"time"
 )
 
-// CookieName is the cookie the session travels in over HTTPS. The __Host-
-// prefix binds it to this exact origin: browsers reject it unless it is
-// Secure, path=/ and carries no Domain, which stops a sibling subdomain from
-// setting one.
-const CookieName = "__Host-gruff"
-
-// InsecureCookieName is used only when the Secure attribute is off, for local
-// development over plain HTTP. The __Host- prefix requires Secure, so keeping
-// it there would produce a cookie every browser refuses to store.
-const InsecureCookieName = "gruff"
+// CookieName binds the session to this exact origin. __Host- requires Secure,
+// so InsecureCookieName is used when that is off - keeping the prefix there
+// yields a cookie every browser refuses to store.
+const (
+	CookieName         = "__Host-gruff"
+	InsecureCookieName = "gruff"
+)
 
 // Name is the cookie name this codec issues and reads.
 func (c *Codec) Name() string {
@@ -71,11 +63,8 @@ type Codec struct {
 	secure bool
 }
 
-// NewCodec builds a codec from a 32-byte key.
-//
-// secure controls the Secure attribute; it exists only so that a plain-HTTP
-// development instance can still hold a session. In any real deployment the
-// portal is behind TLS and this is true.
+// NewCodec builds a codec from a 32-byte key. secure should only be false for
+// local development over plain HTTP.
 func NewCodec(key []byte, secure bool) (*Codec, error) {
 	if len(key) != 32 {
 		return nil, fmt.Errorf("session key must be 32 bytes, got %d", len(key))
@@ -100,9 +89,8 @@ func GenerateKey() ([]byte, error) {
 	return key, nil
 }
 
-// SealRaw encrypts arbitrary bytes under the same key, for cookies that are not
-// sessions - the in-flight login state, for instance. Keeping them on one key
-// means rotating it invalidates everything at once.
+// SealRaw encrypts arbitrary bytes under the session key, so rotating it
+// invalidates in-flight logins too.
 func (c *Codec) SealRaw(plaintext []byte) (string, error) {
 	nonce := make([]byte, c.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {

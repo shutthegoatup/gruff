@@ -1,9 +1,7 @@
 // Package sshca issues short-lived OpenSSH user certificates.
 //
-// Gruff owns the certificate authority and mints the keypair itself: the
-// credential is deliberately ephemeral, so there is no long-lived user key to
-// enrol and nothing for a user to upload. The private key exists only for the
-// life of the response that carries it.
+// Gruff mints the keypair itself: the credential is ephemeral, so there is no
+// long-lived user key to enrol and nothing to upload.
 package sshca
 
 import (
@@ -91,10 +89,8 @@ func (ca *CA) Fingerprint() string {
 	return ssh.FingerprintSHA256(ca.signer.PublicKey())
 }
 
-// Issue mints a keypair and signs a user certificate valid for d.
-//
-// The key ID carries the authenticated username and profile so that every sshd
-// authentication line is attributable to a person without consulting Gruff.
+// Issue mints a keypair and signs a user certificate valid for d. The key ID
+// carries user@profile so sshd's log is attributable without consulting Gruff.
 func (ca *CA) Issue(user, profile string, principals []string, d time.Duration, extensions []string) (Credentials, error) {
 	if len(principals) == 0 {
 		return Credentials{}, fmt.Errorf("profile %q has no principals", profile)

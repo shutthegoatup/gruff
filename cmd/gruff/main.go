@@ -145,12 +145,8 @@ type authComponents struct {
 	codec *authsession.Codec
 }
 
-// setupAuth builds the authenticator for the configured mode.
-//
-// In proxy mode there is nothing to build: Gruff authenticates nobody and
-// trusts its headers. In OIDC mode it discovers the provider up front, so a
-// bad issuer or an unreachable discovery document fails the process at startup
-// rather than the first sign-in.
+// setupAuth builds the authenticator for the configured mode. OIDC discovery
+// runs up front so a bad issuer fails startup, not the first sign-in.
 func setupAuth(cfg *config.Config, log *slog.Logger) (authComponents, error) {
 	if cfg.Auth.Mode != config.AuthOIDC {
 		log.Warn("trusted-header mode: Gruff authenticates nobody and must only be reachable through its proxy",
@@ -179,9 +175,8 @@ func setupAuth(cfg *config.Config, log *slog.Logger) (authComponents, error) {
 	return authComponents{oidc: auth, codec: codec}, nil
 }
 
-// loadSSHCA resolves the SSH certificate authority, which is only needed when
-// SSH profiles are configured. As with the X.509 CA, a missing one is fatal
-// rather than quietly generated.
+// loadSSHCA resolves the SSH CA, needed only when SSH profiles exist. Missing
+// is fatal rather than quietly generated, as with the X.509 CA.
 func loadSSHCA(cfg *config.Config, generate bool, outputDir string, log *slog.Logger) (*sshca.CA, error) {
 	if len(cfg.SSHProfiles) == 0 {
 		return nil, nil
@@ -213,9 +208,8 @@ func loadSSHCA(cfg *config.Config, generate bool, outputDir string, log *slog.Lo
 	return ca, nil
 }
 
-// loadCA resolves the signing CA. The portal refuses to start without one:
-// silently minting a trust anchor would leave an operator believing they had
-// configured the CA they meant to.
+// loadCA resolves the signing CA. Refusing to start beats silently minting a
+// trust anchor nobody meant to create.
 func loadCA(cfg *config.Config, generate bool, outputDir string, log *slog.Logger) (*pki.CA, error) {
 	if len(cfg.Profiles) == 0 {
 		return nil, nil
