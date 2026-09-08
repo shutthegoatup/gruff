@@ -1,57 +1,85 @@
 {{ define "body" }}
-<div class="box content">
-    <header class="card-header">
-        <h1 class="card-header-title">
-            {{ .Description }}
-        </h1>
-        <span class="card-header-icon" aria-label="more options">
-            <h2>
-            <div class="has-background-danger">
-            {{ .Roles }}
-            </div>
-          </h2>
-        </span>
-        <span class="card-header-icon" aria-label="more options">
-           <h1>2h</h1>
-        </span>
-    </header>
-  <h2>Firewall Rules</h2>
-  <table class="table is-fullwidth">
-    <thead>
-      <tr>
-        <th>Protocol</th>
-        <th>Destination</th>
-        <th>Port/s</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-    {{ range $rule := .Rules }}
-      <tr>
-        <td>{{ $rule.Protocol }}</td>
-        <td>{{ $rule.Destination }}</td>
-        <td>{{ $rule.Port }}</td>
-        <td>{{ $rule.Action }}</td>
-      </tr>
-      {{ end }}
-    </tbody>
-  </table>
-  <h2>Routing</h2>
-  <table class="table is-fullwidth">
-    <thead>
-      <tr>
-        <th>Route</th>
-        <th>Netmask</th>
-      </tr>
-    </thead>
-    <tbody>
-    {{ range $r := .Routes }}
-      <tr>
-        <td>{{ $r.Route }}</td>
-        <td>{{ $r.Netmask }}</td>
-      </tr>
-      {{ end }}
-    </tbody>
-  </table>
+{{ with .Profile }}
+<a href="/" class="mb-5 inline-block border-2 border-ink bg-paper px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest hover:bg-amber">&#9664; All OpenVPN profiles</a>
+
+<div class="mb-7 flex flex-wrap items-end justify-between gap-5">
+  <div>
+    <div class="flex flex-wrap items-center gap-3">
+      <h1 class="font-display text-3xl uppercase tracking-tight">{{ .Description }}</h1>
+      <span class="border-2 border-ink bg-amber px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest">Granted</span>
+    </div>
+    <div class="mt-2.5 flex flex-wrap items-center gap-2 font-mono text-xs text-grey">
+      <span>{{ .Name }}</span>
+      <span>&middot;</span>
+      <span>{{ .Duration.Human }} session</span>
+      <span>&middot;</span>
+      {{ range .Roles }}<span class="bg-ink px-1.5 py-0.5 text-amber">{{ . }}</span>{{ end }}
+    </div>
+  </div>
+
+  <form method="post" action="/profile/{{ .Name }}/issue">
+    <button type="submit"
+            class="press border-[3px] border-ink bg-amber px-5 py-2.5 text-xs font-bold uppercase tracking-widest shadow-[5px_5px_0_var(--black)] hover:bg-amber-deep">
+      Issue profile &#9654;
+    </button>
+  </form>
 </div>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  <section class="border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
+    <h2 class="border-b-[3px] border-ink bg-ink px-4 py-2.5 font-display text-sm uppercase tracking-wider text-amber">Firewall rules</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b-2 border-ink text-left text-[10px] font-bold uppercase tracking-widest text-grey">
+            <th class="px-4 py-2">Destination</th>
+            <th class="px-4 py-2">Proto</th>
+            <th class="px-4 py-2">Port</th>
+            <th class="px-4 py-2">Action</th>
+          </tr>
+        </thead>
+        <tbody class="font-mono text-xs">
+        {{ range .Rules }}
+          <tr class="border-b-2 border-ink last:border-0">
+            <td class="px-4 py-2.5 tabular-nums">{{ .Destination }}</td>
+            <td class="px-4 py-2.5">{{ with .Protocol }}{{ . }}{{ else }}<span class="text-grey">any</span>{{ end }}</td>
+            <td class="px-4 py-2.5 tabular-nums">{{ with .Port }}{{ . }}{{ else }}<span class="text-grey">any</span>{{ end }}</td>
+            <td class="px-4 py-2.5">
+              <span class="px-1.5 py-0.5 font-sans text-[9px] font-bold uppercase tracking-widest
+                {{ if eq .Action "ACCEPT" }}bg-ink text-amber{{ else }}bg-danger text-paper{{ end }}">{{ .Action }}</span>
+            </td>
+          </tr>
+        {{ else }}
+          <tr><td colspan="4" class="px-4 py-6 text-center text-grey">No firewall rules.</td></tr>
+        {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
+    <h2 class="border-b-[3px] border-ink bg-ink px-4 py-2.5 font-display text-sm uppercase tracking-wider text-amber">Pushed routes</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b-2 border-ink text-left text-[10px] font-bold uppercase tracking-widest text-grey">
+            <th class="px-4 py-2">Network</th>
+            <th class="px-4 py-2">Netmask</th>
+          </tr>
+        </thead>
+        <tbody class="font-mono text-xs">
+        {{ range .Routes }}
+          <tr class="border-b-2 border-ink last:border-0">
+            <td class="px-4 py-2.5 tabular-nums">{{ . }}</td>
+            <td class="px-4 py-2.5 tabular-nums text-grey">{{ .Netmask }}</td>
+          </tr>
+        {{ else }}
+          <tr><td colspan="2" class="px-4 py-6 text-center text-grey">No routes pushed.</td></tr>
+        {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{{ end }}
 {{ end }}

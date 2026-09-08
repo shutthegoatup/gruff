@@ -1,0 +1,32 @@
+# Targets Gruff directly: it authenticates its own callers.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "gruff.fullname" . }}-portal
+  labels:
+    app: {{ template "gruff.fullname" . }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: {{ .Values.service.gruff.port }}
+    targetPort: {{ .Values.service.gruff.port }}
+    protocol: TCP
+  selector:
+    app: {{ template "gruff.fullname" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "gruff.fullname" . }}
+  labels:
+    app: {{ template "gruff.fullname" . }}
+spec:
+  type: LoadBalancer
+  ports:
+  - name: openvpn
+    port: {{ .Values.service.openvpn.externalPort }}
+    targetPort: {{ .Values.service.openvpn.internalPort }}
+    protocol: UDP
+  selector:
+    app: {{ template "gruff.fullname" . }}

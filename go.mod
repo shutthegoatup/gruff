@@ -1,7 +1,13 @@
-module github.com/secureweb/vpn-portal
+module github.com/shutthegoatup/gruff
+
+go 1.27
 
 require (
-	github.com/gorilla/context v1.1.1 // indirect
-	github.com/gorilla/mux v1.6.2
-	gopkg.in/yaml.v2 v2.2.2
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/go-jose/go-jose/v4 v4.1.4
+	go.yaml.in/yaml/v3 v3.0.5
+	golang.org/x/crypto v0.56.0
+	golang.org/x/oauth2 v0.37.0
 )
+
+require golang.org/x/sys v0.47.0 // indirect

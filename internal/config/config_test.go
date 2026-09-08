@@ -1,0 +1,357 @@
+package config
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestProfileAllowedFor pins the behaviour that the previous implementation got
+// wrong: it granted every profile to every caller unconditionally.
+func TestProfileAllowedFor(t *testing.T) {
+	t.Parallel()
+
+	profile := Profile{Name: "livedata", Roles: []string{"vpn-livedata", "vpn-admin"}}
+
+	tests := []struct {
+		name  string
+		roles []string
+		want  bool
+	}{
+		{"matching role", []string{"vpn-livedata"}, true},
+		{"second matching role", []string{"vpn-admin"}, true},
+		{"one of several roles matches", []string{"other", "vpn-admin", "more"}, true},
+		{"no roles at all", nil, false},
+		{"empty role list", []string{}, false},
+		{"unrelated role", []string{"vpn-other"}, false},
+		{"many unrelated roles", []string{"a", "b", "c", "d", "e"}, false},
+		{"role is a prefix, not a match", []string{"vpn-live"}, false},
+		{"role differs in case", []string{"VPN-LIVEDATA"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := profile.AllowedFor(tt.roles); got != tt.want {
+				t.Errorf("AllowedFor(%q) = %v, want %v", tt.roles, got, tt.want)
+			}
+		})
+	}
+}
+
+// A profile granting no roles must match nobody, however many roles the caller
+// presents. The old code panicked or granted access in this shape.
+func TestProfileWithoutRolesDeniesEveryone(t *testing.T) {
+	t.Parallel()
+
+	profile := Profile{Name: "orphan"}
+	for _, roles := range [][]string{nil, {"any"}, {"a", "b", "c", "d", "e", "f", "g"}} {
+		if profile.AllowedFor(roles) {
+			t.Errorf("AllowedFor(%q) = true, want false", roles)
+		}
+	}
+}
+
+func TestRoles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		header string
+		want   []string
+	}{
+		{"", nil},
+		{"   ", nil},
+		{"a", []string{"a"}},
+		{"a,b", []string{"a", "b"}},
+		{" a , b ", []string{"a", "b"}},
+		{"a,,b", []string{"a", "b"}},
+		{",", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.header, func(t *testing.T) {
+			t.Parallel()
+			got := Roles(tt.header)
+			if len(got) != len(tt.want) {
+				t.Fatalf("Roles(%q) = %q, want %q", tt.header, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("Roles(%q) = %q, want %q", tt.header, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+const validProfile = `
+profiles:
+  - name: livedata
+    description: Live Data
+    max-session: 2h
+    roles: [vpn-livedata]
+    routes:
+      - 192.168.1.0/24
+    rules:
+      - dest: 192.168.1.0/24
+        port: 53
+        protocol: tcp
+        action: ACCEPT
+template: "client\n"
+`
+
+func TestLoadValid(t *testing.T) {
+	t.Parallel()
+
+	c := loadString(t, validProfile)
+
+	if c.Listen != defaultListen {
+		t.Errorf("Listen = %q, want the loopback default %q", c.Listen, defaultListen)
+	}
+	if c.RolesHeader != defaultRolesHeader {
+		t.Errorf("RolesHeader = %q, want %q", c.RolesHeader, defaultRolesHeader)
+	}
+	if c.ProfileTemplate() == nil {
+		t.Error("ProfileTemplate() = nil, want the template parsed at load time")
+	}
+
+	p, err := c.Profile("livedata")
+	if err != nil {
+		t.Fatalf("Profile(livedata): %v", err)
+	}
+	if time.Duration(p.Duration) != 2*time.Hour {
+		t.Errorf("Duration = %s, want 2h", p.Duration)
+	}
+}
+
+// The old getProfile returned Profiles[0] alongside its error, and panicked
+// outright when no profiles were configured.
+func TestProfileNotFound(t *testing.T) {
+	t.Parallel()
+
+	c := loadString(t, validProfile)
+
+	got, err := c.Profile("nope")
+	if !errors.Is(err, ErrNoProfile) {
+		t.Fatalf("Profile(nope) error = %v, want ErrNoProfile", err)
+	}
+	if got.Name != "" {
+		t.Errorf("Profile(nope) = %q, want the zero profile", got.Name)
+	}
+}
+
+func TestLoadRejects(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{{
+		name: "path traversal in profile name",
+		yaml: `
+profiles:
+  - name: ../../etc/cron.d/evil
+    max-session: 1h
+    roles: [r]
+template: "x"`,
+		want: "name must match",
+	}, {
+		name: "profile granting no roles",
+		yaml: `
+profiles:
+  - name: orphan
+    max-session: 1h
+template: "x"`,
+		want: "no roles",
+	}, {
+		name: "unparseable duration",
+		yaml: `
+profiles:
+  - name: p
+    max-session: two hours
+    roles: [r]
+template: "x"`,
+		want: "parse duration",
+	}, {
+		name: "duration over the ceiling",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 720h
+    roles: [r]
+template: "x"`,
+		want: "exceeds",
+	}, {
+		name: "zero duration",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 0s
+    roles: [r]
+template: "x"`,
+		want: "greater than zero",
+	}, {
+		name: "destination is not a CIDR",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+    rules:
+      - dest: 192.168.1.0
+        action: ACCEPT
+template: "x"`,
+		want: "parse network",
+	}, {
+		name: "action is not an enum member",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+    rules:
+      - dest: 10.0.0.0/8
+        action: "ACCEPT; rm -rf /"
+template: "x"`,
+		want: "action",
+	}, {
+		name: "protocol is not an enum member",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+    rules:
+      - dest: 10.0.0.0/8
+        protocol: "tcp -j DROP"
+        action: ACCEPT
+template: "x"`,
+		want: "protocol",
+	}, {
+		name: "port without a port-bearing protocol",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+    rules:
+      - dest: 10.0.0.0/8
+        port: 53
+        protocol: icmp
+        action: ACCEPT
+template: "x"`,
+		want: "requires protocol",
+	}, {
+		name: "route is not a CIDR",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+    routes:
+      - not-an-ip
+template: "x"`,
+		want: "parse network",
+	}, {
+		name: "duplicate profile names",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+  - name: p
+    max-session: 1h
+    roles: [r]
+template: "x"`,
+		want: "duplicate",
+	}, {
+		name: "no profiles",
+		yaml: `template: "x"`,
+		want: "no profiles",
+	}, {
+		name: "missing template",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]`,
+		want: "template is empty",
+	}, {
+		name: "unparseable template",
+		yaml: `
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+template: "{{ .Unclosed "`,
+		want: "parse template",
+	}, {
+		name: "half-configured CA",
+		yaml: `
+ca-certificate-file: /tmp/cert.pem
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+template: "x"`,
+		want: "must be set together",
+	}, {
+		name: "configdir without a path",
+		yaml: `
+configdir-enabled: true
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+template: "x"`,
+		want: "requires configdir-path",
+	}, {
+		name: "unknown field is a typo, not a comment",
+		yaml: `
+listem: :9000
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+template: "x"`,
+		want: "listem",
+	}}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Load(writeConfig(t, tt.yaml))
+			if err == nil {
+				t.Fatalf("Load() succeeded, want an error containing %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("Load() error = %v, want it to contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func loadString(t *testing.T, yaml string) *Config {
+	t.Helper()
+
+	c, err := Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	return c
+}
+
+func writeConfig(t *testing.T, yaml string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "conf.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
+}

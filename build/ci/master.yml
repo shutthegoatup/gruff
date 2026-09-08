@@ -2,67 +2,86 @@ resources:
 - name: git-repo
   type: git
   source:
-    uri: https://github.com/secureweb/vpn-portal
+    uri: https://github.com/shutthegoatup/gruff
   webhook_token: foobarbaz
   check_every: 1m
 
+anchors:
+  go_task: &go_task
+    platform: linux
+    image_resource:
+      type: registry-image
+      source: {repository: golang, tag: "1.27"}
+    inputs:
+    - name: git-repo
+
 jobs:
-  - name: set_pipeline
-    public: true
-    plan:
-      - get: git-repo
-        trigger: true
-      - set_pipeline: vpn_portal
-        file: git-repo/build/ci/master.yml
-      - set_pipeline: vpn_portal_pr
-        file: git-repo/build/ci/pull-request.yml
-  - name: go build
-    public: true
-    plan:
-      - get: git-repo
-        trigger: true
-        passed: [set_pipeline]
-      - task: go build
-        config:
-          platform: linux
-          image_resource:
-            type: docker-image
-            source: {repository: golang}
-          inputs:
-            - name: git-repo
-          params:
-            GO111MODULE: "on"
-          run:
-            dir: git-repo
-            path: /bin/sh
-            args:
-              - -c
-              - |
-                set -e 
-                unset GOPATH
-                go build -o portal ./cmd/vpn-portal/...
-  - name: go fmt
-    public: true
-    plan:
-      - get: git-repo
-        trigger: true
-        passed: [set_pipeline]
-      - task: go build
-        config:
-          platform: linux
-          image_resource:
-            type: docker-image
-            source: {repository: golang}
-          inputs:
-            - name: git-repo
-          params:
-            GO111MODULE: "on"
-          run:
-            dir: git-repo
-            path: /bin/sh
-            args:
-              - -c
-              - |
-                set -e
-                unset GOPATH
-                 
+- name: set_pipeline
+  public: true
+  plan:
+  - get: git-repo
+    trigger: true
+  - set_pipeline: vpn_portal
+    file: git-repo/build/ci/master.yml
+  - set_pipeline: vpn_portal_pr
+    file: git-repo/build/ci/pull-request.yml
+
+- name: lint
+  public: true
+  plan:
+  - get: git-repo
+    trigger: true
+    passed: [set_pipeline]
+  - task: lint
+    config:
+      <<: *go_task
+      run:
+        dir: git-repo
+        path: /bin/sh
+        args:
+        - -ec
+        - |
+          go vet ./...
+          test -z "$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
+
+- name: test
+  public: true
+  plan:
+  - get: git-repo
+    trigger: true
+    passed: [set_pipeline]
+  - task: test
+    config:
+      <<: *go_task
+      run:
+        dir: git-repo
+        path: /bin/sh
+        args: ["-ec", "go test -race ./..."]
+
+- name: vulncheck
+  public: true
+  plan:
+  - get: git-repo
+    trigger: true
+    passed: [set_pipeline]
+  - task: vulncheck
+    config:
+      <<: *go_task
+      run:
+        dir: git-repo
+        path: /bin/sh
+        args: ["-ec", "go run golang.org/x/vuln/cmd/govulncheck@latest ./..."]
+
+- name: build
+  public: true
+  plan:
+  - get: git-repo
+    trigger: true
+    passed: [lint, test, vulncheck]
+  - task: build
+    config:
+      <<: *go_task
+      run:
+        dir: git-repo
+        path: /bin/sh
+        args: ["-ec", "CGO_ENABLED=0 go build -trimpath -o gruff ./cmd/gruff"]

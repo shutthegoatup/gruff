@@ -1,0 +1,127 @@
+{{- if not .Values.ca.existingSecret }}
+{{- fail "ca.existingSecret is required: the portal will not start without a CA" }}
+{{- end }}
+{{- if not .Values.openvpn.existingSecret }}
+{{- fail "openvpn.existingSecret is required: provide the OpenVPN server keypair" }}
+{{- end }}
+{{- if not .Values.auth.existingSecret }}
+{{- fail "auth.existingSecret is required: it holds the OIDC client secret and the session key" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "gruff.fullname" . }}
+  labels:
+    app: {{ template "gruff.fullname" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ template "gruff.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "gruff.fullname" . }}
+      annotations:
+        checksum/config: {{ .Values.config | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      # Gruff authenticates users itself, so this is the only web container and
+      # it is meant to be reachable.
+      - name: gruff
+        image: {{ .Values.image.gruff }}
+        args:
+        - --config=/etc/config/gruff.yml
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.gruff.port }}
+        env:
+        - name: GRUFF_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.auth.existingSecret }}
+              key: {{ .Values.auth.clientSecretKey }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: auth
+          mountPath: /etc/gruff/auth
+          readOnly: true
+        - name: ca
+          mountPath: /etc/tls/ca
+          readOnly: true
+        - name: profiles
+          mountPath: /tmp/gruff/profiles
+        livenessProbe:
+          httpGet: {path: /healthz, port: http}
+          initialDelaySeconds: 5
+        readinessProbe:
+          httpGet: {path: /healthz, port: http}
+          initialDelaySeconds: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        resources:
+{{ toYaml .Values.resources.gruff | indent 10 }}
+
+      - name: openvpn
+        image: {{ .Values.image.openvpn }}
+        env:
+        - name: OPENVPN_CONFIG
+          value: /etc/config/openvpn.conf
+        - name: OPENVPN_DISABLE_FORWARDING
+          value: "True"
+        - name: OPENVPN_CLIENT_CONNECT
+          value: /usr/local/bin/client_connected.sh
+        - name: OPENVPN_CLIENT_DISCONNECT
+          value: /usr/local/bin/client_disconnect.sh
+        ports:
+        - name: openvpn
+          containerPort: {{ .Values.service.openvpn.internalPort }}
+          protocol: UDP
+        securityContext:
+          runAsUser: 0
+          allowPrivilegeEscalation: false
+          capabilities:
+            # NET_ADMIN alone covers tun setup, routing and iptables.
+            drop: ["ALL"]
+            add: ["NET_ADMIN"]
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: ca
+          mountPath: /etc/tls/ca
+          readOnly: true
+        - name: openvpn-tls
+          mountPath: /etc/tls/openvpn
+          readOnly: true
+        - name: profiles
+          mountPath: /tmp/gruff/profiles
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: {{ template "gruff.fullname" . }}
+          defaultMode: 0444
+      - name: auth
+        secret:
+          secretName: {{ .Values.auth.existingSecret }}
+          defaultMode: 0400
+      - name: ca
+        secret:
+          secretName: {{ .Values.ca.existingSecret }}
+          defaultMode: 0400
+      - name: openvpn-tls
+        secret:
+          secretName: {{ .Values.openvpn.existingSecret }}
+          defaultMode: 0400
+      - name: profiles
+        emptyDir: {}
