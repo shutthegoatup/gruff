@@ -1,8 +1,5 @@
-// Package pki loads a certificate authority and issues short-lived client
-// certificates for VPN profiles.
-//
-// Issued certificates carry the authenticated username as their subject common
-// name so that a credential on the wire is attributable to a person.
+// Package pki loads a CA and issues short-lived VPN client certificates,
+// subject-named for the authenticated user so a credential is attributable.
 package pki
 
 import (

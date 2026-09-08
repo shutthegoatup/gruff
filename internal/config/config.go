@@ -1,8 +1,7 @@
-// Package config loads and validates the portal's operator-supplied configuration.
+// Package config loads and validates the operator-supplied configuration.
 //
-// Validation is strict and happens once at startup: a configuration that could
-// produce an unsafe certificate, an unroutable profile or a malformed firewall
-// rule must fail the process rather than fail a request.
+// Validation is strict and happens at startup: anything that could produce an
+// unsafe certificate or a malformed rule fails the process, not a request.
 package config
 
 import (
@@ -88,10 +87,8 @@ func plural(n int, unit string) string {
 	return fmt.Sprintf("%d %ss", n, unit)
 }
 
-// Network is an IPv4 CIDR. Every network in the configuration is written this
-// way - routes and rule destinations alike - and the dotted-quad netmask form
-// OpenVPN wants on the wire is derived from it rather than configured
-// separately.
+// Network is an IPv4 CIDR. Routes and rule destinations are both written this
+// way; OpenVPN's dotted-quad form is derived, never configured.
 type Network netip.Prefix
 
 // ParseNetwork parses an IPv4 CIDR, rejecting anything that would be ambiguous

@@ -10,21 +10,17 @@ import (
 	"github.com/shutthegoatup/gruff/internal/sshca"
 )
 
-// heredoc delimiters. Quoted at the point of use so the shell performs no
-// expansion on the key material between them, and chosen so they cannot occur
-// inside PEM or authorized_keys content.
+// Quoted at the point of use so the shell expands nothing between them.
 const (
 	keyDelim  = "GRUFF_KEY_EOF"
 	certDelim = "GRUFF_CERT_EOF"
 	confDelim = "GRUFF_CONF_EOF"
 )
 
-// writeSSHInstaller emits a self-contained POSIX shell script that installs the
-// credential.
+// writeSSHInstaller emits a self-contained POSIX shell script.
 //
-// A tarball leaves the user to extract it, fix permissions and wire up
-// ssh_config by hand; the mode on the private key matters and is easy to get
-// wrong. The script does the whole job, is idempotent, contacts nothing, and is
+// A tarball leaves the user to fix the private key's mode by hand, which is the
+// easiest part to get wrong. The script is idempotent, contacts nothing, and is
 // plain text so it can be read before it is run.
 func writeSSHInstaller(w io.Writer, profile config.SSHProfile, user string, creds sshca.Credentials) error {
 	dir := "${HOME}/.ssh/gruff/" + profile.Name

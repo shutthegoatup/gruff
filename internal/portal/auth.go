@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/shutthegoatup/gruff/internal/authsession"
 	"github.com/shutthegoatup/gruff/internal/config"
 	"github.com/shutthegoatup/gruff/internal/oidcauth"
 )
@@ -18,12 +17,9 @@ type identity struct {
 	Roles    []string
 }
 
-// identify resolves the caller.
-//
-// In proxy mode this reads headers an upstream is trusted to have set. In OIDC
-// mode it opens the session cookie Gruff itself issued; a caller with no valid
-// session resolves to the zero identity, which grants nothing, and the
-// requireSession middleware sends them to log in.
+// identify resolves the caller from the session cookie, or from proxy headers
+// when Gruff is not the authenticator. No valid session yields the zero
+// identity, which grants nothing.
 func (p *Portal) identify(r *http.Request) identity {
 	if p.oidc == nil {
 		return identity{
@@ -40,9 +36,8 @@ func (p *Portal) identify(r *http.Request) identity {
 	return identity{Username: user.Username, Fullname: user.Fullname, Roles: user.Roles}
 }
 
-// requireSession redirects an unauthenticated caller to the provider. It only
-// applies in OIDC mode: in proxy mode the proxy has already decided, and Gruff
-// has nowhere to send anyone.
+// requireSession redirects an unauthenticated caller to the provider. In proxy
+// mode the proxy has already decided and there is nowhere to send anyone.
 func (p *Portal) requireSession(next http.Handler) http.Handler {
 	if p.oidc == nil {
 		return next
@@ -86,13 +81,13 @@ func (p *Portal) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, p.oidc.ClearFlow())
 
 	if err != nil {
-		// A mismatched or absent flow is the ordinary case for a stale tab or
-		// a forged callback, and is not worth an error page beyond this.
-		level := "error"
+		// A stale tab or a forged callback is ordinary; a verification failure
+		// is not.
 		if errors.Is(err, oidcauth.ErrFlow) {
-			level = "warn"
+			p.log.WarnContext(r.Context(), "sign-in did not match a login in progress")
+		} else {
+			p.log.ErrorContext(r.Context(), "sign-in failed", "error", err)
 		}
-		p.logCallbackFailure(r, level, err)
 		http.Error(w, "sign-in failed", http.StatusForbidden)
 		return
 	}
@@ -113,28 +108,15 @@ func (p *Portal) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (p *Portal) logCallbackFailure(r *http.Request, level string, err error) {
-	if level == "warn" {
-		p.log.WarnContext(r.Context(), "sign-in did not match a login in progress", "error", err)
-		return
-	}
-	p.log.ErrorContext(r.Context(), "sign-in failed", "error", err)
-}
-
-// canLogout reports whether the portal can actually end a session, which
-// decides whether the log-out control is shown at all.
+// canLogout decides whether the control is shown at all: Gruff can end a
+// session it owns, otherwise only link to whatever the operator configured.
 func (p *Portal) canLogout() bool {
-	// In OIDC mode Gruff owns the session and can always clear it. In proxy
-	// mode it can only link to whatever the operator configured.
 	return p.oidc != nil || p.cfg.LogoutURL != ""
 }
 
-// logoutHref is where the log-out control points.
 func (p *Portal) logoutHref() string {
 	if p.oidc != nil {
 		return "/auth/logout"
 	}
 	return p.cfg.LogoutURL
 }
-
-var _ = authsession.User{}

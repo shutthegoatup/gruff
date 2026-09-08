@@ -10,12 +10,9 @@ import (
 	"github.com/shutthegoatup/gruff/internal/config"
 )
 
-// handleSetup renders the server-side configuration an operator needs in order
-// to trust Gruff: what to put in sshd_config, and what the OpenVPN server needs.
-//
-// This is the half of the job that is not certificate issuance. It is shown
-// rather than assumed so that a deployment outside the bundled Helm chart -
-// a plain host, a VM, a different orchestrator - has everything it needs.
+// handleSetup renders what a host needs in order to trust Gruff, so a
+// deployment outside the bundled chart is not left guessing. Public material
+// only.
 func (p *Portal) handleSetup(w http.ResponseWriter, r *http.Request) {
 	id := p.identify(r)
 

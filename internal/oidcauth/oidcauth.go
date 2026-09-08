@@ -1,9 +1,8 @@
-// Package oidcauth runs the OpenID Connect authorization code flow so Gruff can
-// authenticate users itself rather than relying on a proxy in front of it.
+// Package oidcauth runs the OpenID Connect authorization code flow.
 //
-// The flow keeps no server-side state: the CSRF state, the PKCE verifier and
-// the nonce all travel in a short-lived encrypted cookie, so a login begun on
-// one replica completes on another and a restart mid-login is harmless.
+// State, PKCE verifier and nonce travel in a short-lived encrypted cookie
+// rather than server memory, so a login begun on one replica finishes on
+// another.
 package oidcauth
 
 import (
@@ -26,9 +25,8 @@ import (
 	"github.com/shutthegoatup/gruff/internal/config"
 )
 
-// flowCookie carries the in-flight login. It lives only between the redirect to
-// the provider and the callback. As with the session cookie, the __Host-
-// prefix only applies when the cookie is Secure - it requires it.
+// The in-flight login, alive only between the redirect out and the callback.
+// __Host- requires Secure; see authsession.CookieName.
 const (
 	flowCookie         = "__Host-gruff-flow"
 	insecureFlowCookie = "gruff-flow"

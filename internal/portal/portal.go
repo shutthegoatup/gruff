@@ -1,9 +1,7 @@
-// Package portal serves the web interface that issues OpenVPN profiles.
+// Package portal serves the web interface and issues credentials.
 //
-// The portal performs no authentication of its own. It is designed to sit
-// behind an SSO reverse proxy that authenticates the user and injects identity
-// headers, and it must never be reachable directly: anything that can connect
-// to it can assert its own identity and roles.
+// Authentication is either OIDC, which Gruff runs itself, or trusted headers
+// from a proxy in front of it. See internal/portal/auth.go.
 package portal
 
 import (

@@ -20,9 +20,8 @@ const (
 	KindSSH Kind = "ssh"
 )
 
-// Session records that a certificate was issued. It deliberately holds no key
-// material: the private key exists only for the life of the response that
-// carries it to the client.
+// Session records an issuance. It holds no key material: the private key lives
+// only for the response that carries it.
 type Session struct {
 	User      string
 	Profile   string
@@ -70,23 +69,18 @@ func (s Session) ShortSerial() string {
 	return s.Serial[:shown] + "…"
 }
 
-// Store records issued credentials.
+// Store records issued credentials. It is an audit aid, not a source of truth:
+// no certificate's validity depends on it, which is why an in-memory default is
+// tolerable and why the seam exists for a durable one.
 //
-// This is an audit aid, not a source of truth: nothing about a certificate's
-// validity depends on it, and losing it costs visibility rather than access.
-// That is what makes the in-memory default defensible, and it is also why the
-// interface exists - a deployment that wants the record to survive a restart
-// can back it with SQLite or Postgres without any other code changing.
-//
-// Add failing must never fail an issuance: the certificate is already minted
-// by the time it is called.
+// A failing Add must never fail an issuance; the certificate is already minted.
 type Store interface {
 	Add(ctx context.Context, s Session) error
 	For(ctx context.Context, user string) ([]Session, error)
 }
 
-// MemoryStore is the default Store: newest first, capped, expiry-pruned, and
-// gone when the process is.
+// MemoryStore is the default Store: newest first, capped, and gone with the
+// process.
 type MemoryStore struct {
 	mu       sync.Mutex
 	sessions []Session

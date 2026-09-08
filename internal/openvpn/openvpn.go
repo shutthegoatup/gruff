@@ -17,10 +17,8 @@ const (
 	dirMode  os.FileMode = 0o750
 )
 
-// Write emits the ccd and rules files for every profile under dir.
-//
-// Profile names are validated by the config package before reaching here; the
-// join below is nonetheless anchored so that a name can never escape dir.
+// Write emits the ccd and rules files for every profile under dir. Names are
+// validated upstream; safeJoin is the belt to that braces.
 func Write(dir string, profiles []config.Profile) error {
 	rulesDir := filepath.Join(dir, "rules")
 	if err := os.MkdirAll(rulesDir, dirMode); err != nil {
