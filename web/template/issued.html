@@ -2,7 +2,8 @@
 <div class="mb-8">
   <h1 class="font-display text-3xl uppercase tracking-tight">Your sessions</h1>
   <p class="mt-2 max-w-xl text-sm text-grey">
-    Certificates issued to you that have not yet expired. Private keys are never retained.
+    Certificates issued to you that have not yet expired. Revoking one stops the server
+    honouring it before it expires on its own.
   </p>
 </div>
 
@@ -17,6 +18,7 @@
           <th class="px-4 py-2.5">Issued</th>
           <th class="px-4 py-2.5">Client IP</th>
           <th class="px-4 py-2.5">Serial</th>
+          <th class="px-4 py-2.5"></th>
         </tr>
       </thead>
       <tbody>
@@ -31,6 +33,14 @@
           <td class="px-4 py-3 font-mono text-xs tabular-nums text-grey">{{ .IssuedAt.UTC.Format "2006-01-02 15:04Z" }}</td>
           <td class="px-4 py-3 font-mono text-xs text-grey">{{ .ClientIP }}</td>
           <td class="px-4 py-3 font-mono text-xs text-grey">{{ .ShortSerial }}</td>
+          <td class="px-4 py-3 text-right">
+            <form method="post" action="/issued/{{ .Serial }}/revoke">
+              <button type="submit"
+                      class="press border-2 border-danger px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-danger hover:bg-danger hover:text-paper">
+                Revoke
+              </button>
+            </form>
+          </td>
         </tr>
       {{ end }}
       </tbody>

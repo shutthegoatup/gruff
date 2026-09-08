@@ -20,6 +20,8 @@ func (p *Portal) Handler() http.Handler {
 	mux.HandleFunc("GET /ssh", p.handleSSHProfiles)
 	mux.HandleFunc("POST /ssh/{profile}/issue", p.handleSSHIssue)
 
+	mux.HandleFunc("POST /issued/{serial}/revoke", p.handleRevoke)
+
 	mux.HandleFunc("GET /setup", p.handleSetup)
 	mux.HandleFunc("GET /healthz", p.handleHealth)
 

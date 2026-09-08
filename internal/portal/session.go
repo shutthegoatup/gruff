@@ -84,6 +84,7 @@ type Store interface {
 type MemoryStore struct {
 	mu       sync.Mutex
 	sessions []Session
+	revoked  []Revocation
 }
 
 var _ Store = (*MemoryStore)(nil)
