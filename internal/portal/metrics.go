@@ -113,7 +113,12 @@ func formatLabels(kv []string) string {
 }
 
 // escapeLabel guards the exposition against a value containing a quote or a
-// newline. Profile names are already constrained, but a username is not.
+// newline.
+//
+// Every label emitted today is bounded - kind, profile, version - and it must
+// stay that way: a username or a serial as a label is a new time series per
+// value, which is how a metrics backend gets taken down. This is a guard for
+// whatever gets added next, not for anything present.
 func escapeLabel(v string) string {
 	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
 	return r.Replace(v)

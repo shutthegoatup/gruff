@@ -45,6 +45,9 @@ type Provider struct {
 	// ForceNonce, when set, is stamped into the ID token instead of the nonce
 	// of the login that produced the code - for exercising replay rejection.
 	ForceNonce string
+	// TokenLifetime is how long the ID token is valid. Real providers default
+	// to minutes; Keycloak ships five.
+	TokenLifetime time.Duration
 }
 
 // New starts a provider and registers its shutdown with t.
@@ -57,12 +60,13 @@ func New(t *testing.T) *Provider {
 	}
 
 	p := &Provider{
-		ClientID: "gruff",
-		Username: "alice.mercer",
-		Fullname: "Alice Mercer",
-		Roles:    []string{"vpn-livedata", "ssh-bastion"},
-		key:      key,
-		nonces:   map[string]string{},
+		ClientID:      "gruff",
+		Username:      "alice.mercer",
+		Fullname:      "Alice Mercer",
+		Roles:         []string{"vpn-livedata", "ssh-bastion"},
+		TokenLifetime: time.Hour,
+		key:           key,
+		nonces:        map[string]string{},
 	}
 
 	mux := http.NewServeMux()
@@ -167,7 +171,7 @@ func (p *Provider) IDToken(nonce string) string {
 		"iss":                p.Issuer,
 		"aud":                p.ClientID,
 		"sub":                "subject-" + p.Username,
-		"exp":                time.Now().Add(time.Hour).Unix(),
+		"exp":                time.Now().Add(p.TokenLifetime).Unix(),
 		"iat":                time.Now().Unix(),
 		"nonce":              nonce,
 		"preferred_username": p.Username,
