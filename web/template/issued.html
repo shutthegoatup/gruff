@@ -1,31 +1,51 @@
 {{ define "body" }}
-<div class="issued">
-<div>Sessions Issued</div>
-<table class="table is-fullwidth">
-    <thead>
-    <tr>
-        <th>Issues On</th>
-        <th>User</th>
-        <th>Profile</th>
-        <th>Expires</th>
-        <th>Client IP</th>
-    </tr>
-    </thead>
-    <tbody>
-    {{ range $i := .Profiles }}
-    <tr>
-        <td>{{ $i.IssuedOn }}</td>
-        <td>
-                {{ $i.User }}
-        </td>
-        <td>
-                {{ $i.Profile }}
-        </td>
-        <td>{{ $i.ExpiresOn }}</td>
-        <td>{{ $i.ClientIP }}</td>
-    </tr>
-    {{ end }}
-    </tbody>
-</table>
+<div class="mb-8">
+  <h1 class="font-display text-3xl uppercase tracking-tight">Your sessions</h1>
+  <p class="mt-2 max-w-xl text-sm text-grey">
+    Certificates issued to you that have not yet expired. Private keys are never retained.
+  </p>
 </div>
+
+<section class="border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
+  {{ if .Sessions }}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b-[3px] border-ink bg-ink text-left text-[10px] font-bold uppercase tracking-widest text-amber">
+          <th class="px-4 py-2.5">Profile</th>
+          <th class="px-4 py-2.5">Expires</th>
+          <th class="px-4 py-2.5">Issued</th>
+          <th class="px-4 py-2.5">Client IP</th>
+          <th class="px-4 py-2.5">Serial</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{ range .Sessions }}
+        <tr class="border-b-2 border-ink last:border-0">
+          <td class="px-4 py-3 font-display text-sm uppercase">{{ .Profile }}</td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <span class="border-2 border-ink px-2 py-0.5 font-mono text-xs font-medium tabular-nums
+              {{ if .Expiring }}bg-danger text-paper{{ else }}bg-amber{{ end }}">{{ .Remaining }}</span>
+            <span class="ml-2 font-mono text-[11px] tabular-nums text-grey">{{ .ExpiresAt.UTC.Format "15:04Z" }}</span>
+          </td>
+          <td class="px-4 py-3 font-mono text-xs tabular-nums text-grey">{{ .IssuedAt.UTC.Format "2006-01-02 15:04Z" }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-grey">{{ .ClientIP }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-grey">{{ .ShortSerial }}</td>
+        </tr>
+      {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ else }}
+  <div class="flex flex-col items-center gap-3 px-6 py-14 text-center">
+    <span class="border-[3px] border-ink bg-amber px-4 py-2 font-display text-sm uppercase tracking-widest">No active sessions</span>
+    <p class="max-w-sm text-sm text-grey">
+      Download a profile and it will appear here until its certificate expires.
+    </p>
+    <a href="/" class="press mt-2 border-2 border-ink bg-paper px-4 py-2 text-[11px] font-bold uppercase tracking-widest shadow-[3px_3px_0_var(--black)] hover:bg-amber">
+      Browse profiles
+    </a>
+  </div>
+  {{ end }}
+</section>
 {{ end }}

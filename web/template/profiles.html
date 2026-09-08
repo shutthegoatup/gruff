@@ -1,68 +1,99 @@
 {{ define "body" }}
-
-<div class="columns is-multiline">
-{{ range $p := .Profiles }}
-    <div class="column">
-        <div class="card">
-            <header class="card-header">
-                <p class="card-header-title">
-                    {{ .Description }}
-                </p>
-                <span class="card-header-icon" aria-label="more options">
-                    {{ if eq $p.Permitted true }}
-                    <div class="has-background-primary">
-                    {{ else }}
-                    <div class="has-background-danger">
-                    {{ end }}
-                    {{ .Roles }}
-                    </div>
-                </span>
-                <span class="card-header-icon" aria-label="more options">
-                    {{ .Duration }}
-                </span>
-            </header>
-            <div class="card-content">
-                <div class="content">
-                    <table class="table">
-                        <thead>
-                            <th>Destination</th>
-                            <th>Port</th>
-                            <th>Protocol</th>
-                            <th>Action</th>
-                        </thead>
-                        <tbody>
-                    {{ range $rule := .Rules }}
-                        <tr>
-                            <td>{{ $rule.Destination }}</td>
-                            <td>{{ $rule.Port }}</td>
-                            <td>{{ $rule.Protocol }}</td>
-                            <td>{{ $rule.Action }}</td>
-                        </tr>
-                    {{ end }}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <footer class="card-footer">
-                <a href="/profile/{{ .Name }}" class="card-footer-item">
-                    <i class="fa fa-file-text" aria-hidden="true"></i>
-                    View
-                </a>
-                {{ if eq $p.Permitted true }}
-                    <a href="/profile/{{ .Name }}/issue" class="card-footer-item">
-                        <i class="fa fa-download" aria-hidden="true"></i>
-                        Download
-                    </a>
-                {{ else }}
-                    <a href="mailto:allan@secureweb.ltd" class="card-footer-item">
-                        <i class="fa fa-reply" aria-hidden="true"></i>
-                        Request
-                    </a>
-                {{ end }}
-            </footer>
-        </div>
-    </div>
-{{ end }}
+<div class="mb-8 flex flex-wrap items-center gap-4">
+  <h1 class="font-display text-3xl uppercase tracking-tight">VPN Profiles</h1>
+  <span class="bg-ink px-2.5 py-1 font-mono text-xs text-amber">{{ .GrantedCount }} / {{ len .Profiles }} GRANTED</span>
 </div>
 
-{{end}}
+<div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+{{ range .Profiles }}
+  {{ if .Permitted }}
+  <article class="slab flex flex-col border-[3px] border-ink bg-paper shadow-[7px_7px_0_var(--black)]">
+    <div class="flex items-stretch border-b-[3px] border-ink">
+      <h2 class="flex-1 px-3.5 py-3 font-display text-lg uppercase">{{ .Description }}</h2>
+      <span class="grid place-items-center border-l-[3px] border-ink bg-amber px-3 text-[10px] font-bold uppercase tracking-widest">Granted</span>
+    </div>
+
+    <p class="px-3.5 pt-3 font-mono text-xs text-grey">{{ .Name }}</p>
+
+    <div class="flex gap-2.5 p-3.5">
+      <div class="flex-1 border-2 border-ink px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-grey">Session</div>
+        <div class="font-display text-lg leading-tight tabular-nums">{{ .Duration.Human }}</div>
+      </div>
+      <div class="flex-1 border-2 border-ink px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-grey">Routes</div>
+        <div class="font-display text-lg leading-tight tabular-nums">{{ len .Routes }}</div>
+      </div>
+      <div class="flex-1 border-2 border-ink px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-grey">Rules</div>
+        <div class="font-display text-lg leading-tight tabular-nums">{{ len .Rules }}</div>
+      </div>
+    </div>
+
+    <div class="flex-1 px-3.5">
+      {{ range .Rules }}
+        <div class="flex items-center gap-2.5 border-t-2 border-ink py-2 font-mono text-xs">
+          <span class="px-1.5 py-0.5 font-sans text-[9px] font-bold uppercase tracking-widest
+            {{ if eq .Action "ACCEPT" }}bg-ink text-amber{{ else }}bg-danger text-paper{{ end }}">{{ .Action }}</span>
+          <span class="truncate">{{ .Destination }}{{ with .Port }}:{{ . }}{{ end }}</span>
+        </div>
+      {{ else }}
+        <div class="border-t-2 border-ink py-2 font-mono text-xs text-grey">No firewall rules</div>
+      {{ end }}
+    </div>
+
+    <div class="mt-auto flex gap-2.5 p-3.5">
+      <a href="/profile/{{ .Name }}"
+         class="press border-2 border-ink bg-paper px-3 py-2 text-[11px] font-bold uppercase tracking-widest hover:bg-field">Details</a>
+      <form method="post" action="/profile/{{ .Name }}/issue" class="ml-auto">
+        <button type="submit"
+                class="press border-2 border-ink bg-amber px-3.5 py-2 text-[11px] font-bold uppercase tracking-widest shadow-[3px_3px_0_var(--black)] hover:bg-amber-deep">
+          Issue &#9654;
+        </button>
+      </form>
+    </div>
+  </article>
+
+  {{ else }}
+  <article class="slab flex flex-col border-[3px] border-stone-line bg-stone shadow-[7px_7px_0_#b9b3a1]">
+    <div class="flex items-stretch border-b-[3px] border-stone-line">
+      <h2 class="flex-1 px-3.5 py-3 font-display text-lg uppercase text-stone-ink">{{ .Description }}</h2>
+      <span class="grid place-items-center border-l-[3px] border-stone-line bg-stone-line px-3 text-[10px] font-bold uppercase tracking-widest text-stone">Locked</span>
+    </div>
+
+    <p class="px-3.5 pt-3 font-mono text-xs text-stone-ink/70">{{ .Name }}</p>
+
+    <div class="flex gap-2.5 p-3.5">
+      <div class="flex-1 border-2 border-stone-line px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-stone-ink/70">Session</div>
+        <div class="font-display text-lg leading-tight tabular-nums text-stone-ink">{{ .Duration.Human }}</div>
+      </div>
+      <div class="flex-1 border-2 border-stone-line px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-stone-ink/70">Routes</div>
+        <div class="font-display text-lg leading-tight tabular-nums text-stone-ink">{{ len .Routes }}</div>
+      </div>
+      <div class="flex-1 border-2 border-stone-line px-2.5 py-2">
+        <div class="text-[9px] font-bold uppercase tracking-widest text-stone-ink/70">Rules</div>
+        <div class="font-display text-lg leading-tight tabular-nums text-stone-ink">{{ len .Rules }}</div>
+      </div>
+    </div>
+
+    <div class="flex-1 px-3.5">
+      <div class="flex flex-wrap items-center gap-2 border-t-2 border-stone-line py-2 font-mono text-xs">
+        <span class="bg-stone-line px-1.5 py-0.5 font-sans text-[9px] font-bold uppercase tracking-widest text-stone">Role</span>
+        {{ range .Roles }}<span class="text-stone-ink">{{ . }}</span>{{ end }}
+      </div>
+      <p class="pt-2 text-[13px] text-stone-ink">You do not hold a role that grants this profile.</p>
+    </div>
+
+    <div class="mt-auto p-3.5">
+      <a href="{{ $.HelpURL }}"
+         class="press block border-2 border-dashed border-stone-line px-3 py-2 text-center text-[11px] font-bold uppercase tracking-widest text-stone-ink hover:bg-stone-line hover:text-stone">
+        Request access
+      </a>
+    </div>
+  </article>
+  {{ end }}
+{{ end }}
+</div>
+{{ end }}

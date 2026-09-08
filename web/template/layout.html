@@ -1,48 +1,35 @@
-<html>
+<!doctype html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
-  <meta charset="UTF-8">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.5/css/bulma.css" 
-  integrity="sha256-ujE/ZUB6CMZmyJSgQjXGCF4sRRneOimQplBVLu8OU5w=" crossorigin="anonymous" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fork-awesome@1.1.7/css/fork-awesome.min.css" 
-  integrity="sha256-gsmEoJAws/Kd3CjuOQzLie5Q3yshhvmo7YNtBG7aaEY=" crossorigin="anonymous">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/portal.css">
 </head>
-<body>
-  <nav class="navbar is-primary" role="navigation" aria-label="main navigation">
-    <div class="navbar-brand">
-      <a class="navbar-item" href="/">
-        <strong>{{ .Brand }}</strong>
-      </a>
-    </div>
-    <div class="navbar-menu">
-      <div class="navbar-end">
-        <a class="navbar-item" href="/">Profiles</a>
-        <a class="navbar-item" href="/issued">Sessions</a>
-        <a class="navbar-item" href="{{ .HelpURL }}">Help</a>
-        <div class="navbar-item">{{ .Username }}</div>
-        {{ if .LogoutURL }}
-        <a class="navbar-item" href="{{ .LogoutURL }}">
-          Logout
-        </a>
+<body class="min-h-screen bg-field font-sans text-ink antialiased">
+  <header class="on-black bg-ink text-field">
+    <nav class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-6 py-3.5">
+      <a href="/" class="font-display text-lg uppercase tracking-tight">Gruff<span class="text-amber">.</span></a>
+
+      <div class="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold uppercase tracking-widest">
+        <a href="/" class="px-2 py-1 hover:bg-amber hover:text-ink">Profiles</a>
+        <a href="/issued" class="px-2 py-1 hover:bg-amber hover:text-ink">Sessions</a>
+        {{ with .HelpURL }}<a href="{{ . }}" class="px-2 py-1 hover:bg-amber hover:text-ink">Help</a>{{ end }}
+
+        {{ with .Username }}
+          <span class="ml-1 flex items-center gap-2 border-l-2 border-stone-line pl-4 font-mono text-[11px] font-normal normal-case tracking-normal text-stone">
+            <span class="bg-amber px-1.5 py-0.5 font-sans text-[10px] font-bold uppercase tracking-wider text-ink">{{ $.Initials }}</span>
+            {{ . }}
+          </span>
         {{ end }}
+        {{ with .LogoutURL }}<a href="{{ . }}" class="px-2 py-1 hover:bg-amber hover:text-ink">Log out</a>{{ end }}
       </div>
-    </div>
-  </nav>  
-  <section class="section">
-    <div class=container>
-      {{ template "body" . }}
-    </div>
-  </section>
-  <footer class="footer hero has-background-primary">
-    <div class="hero-foot">
-      <div class="container">
-        <div class="columns">
-          <a href="https://github.com/secureweb/openvpn-sso-portal">
-            openvpn-sso-portal
-          </a>
-        </div>
-      </div>
-    </div>     
-  </footer>
+    </nav>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6 py-9 pb-20">
+    {{ template "body" . }}
+  </main>
 </body>
 </html>

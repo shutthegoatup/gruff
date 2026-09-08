@@ -1,64 +1,69 @@
-# 
-# Example config.  
 #
-
-# Default below
-listen: :9000
-banner: Secureweb VPN Portal
+# Example config.
+#
+# The portal does not authenticate anyone. It trusts the identity headers below,
+# so it must only ever be reachable through the SSO proxy that sets them. The
+# default listen address is loopback for exactly this reason.
+#
+listen: 127.0.0.1:9000
+banner: Gruff
 
 logout-url: https://google.co.uk
-help-url: https://github.com/secureweb/openvpn-sso-portal/issues
+help-url: https://github.com/shutthegoatup/gruff/issues
 
 fullname-header: X-Auth-Fullname
 username-header: X-Auth-Username
 roles-header: X-Auth-Roles
 
-# Self-generated CA if not set.
-# ca-certificate-file: tmp/ca/ca.pem
-# ca-private-file: tmp/ca/ca-key.pem
+# Required. The portal will not start without a CA.
+# For local development use -dev-generate-ca -dev-ca-dir tmp/tls instead.
+# ca-certificate-file: tmp/tls/ca/cert.pem
+# ca-private-file: tmp/tls/ca/key.pem
 
-# Used to drop OpenVPN profiles at startup.
+# Drops OpenVPN client-config-dir and firewall files at startup.
 # configdir-enabled: true
 # configdir-path: /tmp/profiles
 
-# 
+# Every profile must grant at least one role: access is denied by default, so a
+# profile with no roles would be unreachable and is rejected at startup.
 profiles:
-- name: livedata
-  description : Live Data
-  max-session: 2h
-  roles:
-    - vpn-livedata
-  routes:
-    - route: 192.168.1.0
-      netmask: 255.255.255.0
-  rules:
-    - dest: 192.168.1.0/24
-      port: 53
-      protocol: tcp
-      action: ACCEPT
-- name: notlivedata
-  description: Not Live Data
-  max-session: 8h
-  routes:
-    - route: 172.16.0.0
-      netmask: 255.255.255.0
-  rules:
-    - dest: 172.16.0.0/16
-      port: 53
-      protocol: udp
-      action: ACCEPT
-      
+  - name: livedata
+    description: Live Data
+    max-session: 2h
+    roles:
+      - vpn-livedata
+    routes:
+      - 192.168.1.0/24
+    rules:
+      - dest: 192.168.1.0/24
+        port: 53
+        protocol: tcp
+        action: ACCEPT
+  - name: notlivedata
+    description: Not Live Data
+    max-session: 8h
+    roles:
+      - vpn-notlivedata
+    routes:
+      - 172.16.0.0/16
+    rules:
+      - dest: 172.16.0.0/16
+        port: 53
+        protocol: udp
+        action: ACCEPT
+
 template: |
   #
   # Expiration of Certificate: {{ .Session.ExpiresOn }}
   # Session Duration: {{ .Session.Duration }}
   # VPN Profile for: {{ .Session.Profile }}
+  # Issued to: {{ .Session.User }}
   #
 
   client
   dev tun
   proto udp
-  remote openvpn.secureweb.ltd 1194
+  remote vpn.example.com 1194
   resolv-retry infinite
   remote-cert-tls server
   nobind
@@ -71,8 +76,8 @@ template: |
   verb 1
   keepalive 10 900
   inactive 3600
-  cipher AES-256-CBC
-  tls-cipher TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256:TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256:TLS-ECDHE-RSA-WITH-AES-256-GCM-SHA384:TLS-DHE-RSA-WITH-AES-256-CBC-SHA256
+  cipher AES-256-GCM
+  tls-cipher TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256:TLS-ECDHE-ECDSA-WITH-AES-128-GCM-SHA256:TLS-ECDHE-RSA-WITH-AES-256-GCM-SHA384
 
   <ca>
   {{ .Session.IssuingCA }}</ca>

@@ -1,0 +1,171 @@
+#
+# Helm chart example config.
+#
+# Traffic path: Ingress -> sso (:8000) -> portal (127.0.0.1:9000)
+#
+# The portal authenticates nobody; it trusts the X-Auth-* headers the SSO proxy
+# sets. It therefore binds loopback only, and no Service targets it directly.
+# Do not expose service.portal.internalPort to anything but the sidecar.
+#
+image:
+  sso: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+  portal: quay.io/shutthegoatup/gruff:0.3.0
+  openvpn: shutthegoatup/openvpn
+
+service:
+  # Port the SSO proxy listens on. This is what the Ingress targets.
+  sso:
+    port: 8000
+  # Loopback port the portal listens on, reachable only from the SSO sidecar.
+  portal:
+    internalPort: 9000
+  openvpn:
+    internalPort: 1194
+    externalPort: 1194
+
+ingress:
+  enabled: true
+  className: ""
+  host: gruff.example.com
+  annotations: {}
+  tls:
+    secretName: gruff-tls
+
+##
+# The portal will not start without a CA: it refuses to silently mint a trust
+# anchor. Provide a Secret with cert.pem and key.pem.
+#
+#   kubectl create secret generic gruff-ca \
+#     --from-file=cert.pem --from-file=key.pem
+##
+ca:
+  existingSecret: ""
+
+##
+# The OpenVPN server's own keypair, signed by the CA above. Secret keys:
+# cert.pem and key.pem.
+##
+openvpn:
+  existingSecret: ""
+
+resources:
+  portal:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  sso:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 128Mi}
+
+##
+# Config files, dropped straight into a ConfigMap.
+##
+config: |
+  oauth2-proxy.cfg: |
+    http_address = "0.0.0.0:8000"
+    upstreams = ["http://127.0.0.1:9000"]
+    provider = "keycloak-oidc"
+    oidc_issuer_url = "https://auth.example.com/realms/main"
+    client_id = "gruff"
+    email_domains = ["*"]
+    set_xauthrequest = true
+    pass_access_token = false
+
+  gruff.yml: |
+    # Loopback only: the SSO sidecar is the sole permitted client.
+    listen: 127.0.0.1:9000
+    banner: Gruff
+    logout-url: https://auth.example.com/realms/main/protocol/openid-connect/logout
+    help-url: https://github.com/shutthegoatup/gruff/issues
+
+    fullname-header: X-Auth-Request-Preferred-Username
+    username-header: X-Auth-Request-User
+    roles-header: X-Auth-Request-Groups
+
+    ca-certificate-file: /etc/tls/ca/cert.pem
+    ca-private-file: /etc/tls/ca/key.pem
+
+    configdir-enabled: true
+    configdir-path: /tmp/gruff/profiles
+
+    # Every profile must grant at least one role; access is denied by default.
+    profiles:
+    - name: livedata
+      description: Live Data
+      max-session: 2h
+      roles:
+        - vpn-livedata
+      routes:
+        - 192.168.1.0/24
+      rules:
+        - dest: 192.168.1.0/24
+          port: 53
+          protocol: tcp
+          action: ACCEPT
+    - name: notlivedata
+      description: Not Live Data
+      max-session: 8h
+      roles:
+        - vpn-notlivedata
+      routes:
+        - 172.16.0.0/16
+      rules:
+        - dest: 172.16.0.0/16
+          port: 53
+          protocol: udp
+          action: ACCEPT
+
+    template: |
+      #
+      # Expiration of Certificate: {{ "{{ .Session.ExpiresOn }}" }}
+      # Session Duration: {{ "{{ .Session.Duration }}" }}
+      # VPN Profile for: {{ "{{ .Session.Profile }}" }}
+      # Issued to: {{ "{{ .Session.User }}" }}
+      #
+
+      client
+      dev tun
+      proto udp
+      remote vpn.example.com 1194
+      resolv-retry infinite
+      remote-cert-tls server
+      nobind
+      tls-version-min 1.2
+      persist-key
+      persist-tun
+      ca [inline]
+      cert [inline]
+      key [inline]
+      verb 1
+      keepalive 10 900
+      inactive 3600
+      cipher AES-256-GCM
+
+      <ca>
+      {{ "{{ .Session.IssuingCA }}" }}</ca>
+
+      <cert>
+      {{ "{{ .Session.Certificate }}" }}</cert>
+
+      <key>
+      {{ "{{ .Session.PrivateKey }}" }}</key>
+
+  openvpn.conf: |
+    local 0.0.0.0
+    port 1194
+    proto udp
+    dev tun
+    ca /etc/tls/ca/cert.pem
+    cert /etc/tls/openvpn/cert.pem
+    key /etc/tls/openvpn/key.pem
+    client-config-dir /tmp/gruff/profiles
+    ccd-exclusive
+    server 10.100.10.0 255.255.255.0
+    management 127.0.0.1 1234
+    duplicate-cn
+    tls-version-min 1.2
+    cipher AES-256-GCM
+    keepalive 10 120
+    inactive 3600
+    script-security 2
+    persist-key
+    persist-tun

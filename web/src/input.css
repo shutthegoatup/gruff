@@ -1,0 +1,140 @@
+/*
+ * Tailwind + Basecoat entrypoint. Compiled by the pinned standalone Tailwind
+ * binary (make ui) into web/static/portal.css, which is embedded in the binary
+ * and committed, so an ordinary `go build` needs no frontend toolchain.
+ *
+ * Basecoat is vendored under basecoat/ and the typefaces under
+ * ../static/fonts/ rather than pulled from npm or a CDN: Gruff serves no
+ * external origins, which is what lets the CSP stay at default-src 'none'.
+ */
+@import "tailwindcss";
+@import "./basecoat/basecoat.css";
+
+/* Tailwind scans these for the utility classes it needs to emit. */
+@source "../template";
+
+/* --------------------------------------------------------------- typefaces */
+
+@font-face {
+  font-family: "Archivo Black";
+  src: url("/static/fonts/archivo-black-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Archivo";
+  src: url("/static/fonts/archivo-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Archivo";
+  src: url("/static/fonts/archivo-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Archivo";
+  src: url("/static/fonts/archivo-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/static/fonts/plex-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/static/fonts/plex-mono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+/* -------------------------------------------------------------------- theme
+ *
+ * Gruff commits to one visual world: hazard signage. Heavy rules, flat fields,
+ * amber on black. This is deliberately not theme-reactive - every colour is
+ * painted explicitly so the page holds on any host ground.
+ *
+ * Amber marks what is available to you and what acts. Grey stone marks what is
+ * withheld. Red marks traffic that is stopped. Nothing else is coloured.
+ */
+:root {
+  --field: #f2efe6;
+  --paper: #ffffff;
+  --black: #101010;
+  --amber: #ffb000;
+  --amber-deep: #d99500;
+  --stone: #ddd8c8;
+  --stone-line: #6c6659;
+  --stone-ink: #4a463c;
+  --red: #d92b1c;
+  --grey: #5c5c5c;
+
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-field: var(--field);
+  --color-paper: var(--paper);
+  --color-ink: var(--black);
+  --color-amber: var(--amber);
+  --color-amber-deep: var(--amber-deep);
+  --color-stone: var(--stone);
+  --color-stone-line: var(--stone-line);
+  --color-stone-ink: var(--stone-ink);
+  --color-danger: var(--red);
+  --color-grey: var(--grey);
+
+  --font-display: "Archivo Black", "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Keyboard focus has to survive on both the field and the black nav. */
+:where(a, button, [tabindex]):focus-visible {
+  outline: 3px solid var(--black);
+  outline-offset: 3px;
+}
+
+.on-black :where(a, button):focus-visible {
+  outline-color: var(--amber);
+}
+
+/*
+ * Slabs arrive by settling onto their shadow. One orchestrated load, staggered
+ * across the grid; nothing animates thereafter except direct interaction.
+ */
+@keyframes slab-settle {
+  from {
+    opacity: 0;
+    transform: translate(-6px, -6px);
+  }
+}
+
+.slab {
+  animation: slab-settle 0.34s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+.slab:nth-child(1) { animation-delay: 0.04s; }
+.slab:nth-child(2) { animation-delay: 0.10s; }
+.slab:nth-child(3) { animation-delay: 0.16s; }
+.slab:nth-child(4) { animation-delay: 0.22s; }
+.slab:nth-child(5) { animation-delay: 0.28s; }
+.slab:nth-child(6) { animation-delay: 0.34s; }
+
+/* Pressing a control drives it into its own shadow. */
+.press { transition: transform 0.09s ease-out, box-shadow 0.09s ease-out; }
+.press:active { transform: translate(3px, 3px); box-shadow: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slab { animation: none; }
+  .press { transition: none; }
+}

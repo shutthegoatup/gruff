@@ -1,0 +1,129 @@
+{{- if not .Values.ca.existingSecret }}
+{{- fail "ca.existingSecret is required: the portal will not start without a CA" }}
+{{- end }}
+{{- if not .Values.openvpn.existingSecret }}
+{{- fail "openvpn.existingSecret is required: provide the OpenVPN server keypair" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "gruff.fullname" . }}
+  labels:
+    app: {{ template "gruff.fullname" . }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ template "gruff.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "gruff.fullname" . }}
+      annotations:
+        checksum/config: {{ .Values.config | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      # The only container reachable from outside the pod. Everything it
+      # forwards has been authenticated and carries X-Auth-Request-* headers.
+      - name: sso
+        image: {{ .Values.image.sso }}
+        args:
+        - --config=/etc/config/oauth2-proxy.cfg
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.sso.port }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        resources:
+{{ toYaml .Values.resources.sso | indent 10 }}
+
+      # Binds 127.0.0.1 only: it trusts its identity headers, so it must be
+      # unreachable except through the sidecar above.
+      - name: portal
+        image: {{ .Values.image.portal }}
+        args:
+        - --config=/etc/config/gruff.yml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: ca
+          mountPath: /etc/tls/ca
+          readOnly: true
+        - name: profiles
+          mountPath: /tmp/gruff/profiles
+        livenessProbe:
+          httpGet: {path: /healthz, port: {{ .Values.service.portal.internalPort }}, host: 127.0.0.1}
+          initialDelaySeconds: 5
+        readinessProbe:
+          httpGet: {path: /healthz, port: {{ .Values.service.portal.internalPort }}, host: 127.0.0.1}
+          initialDelaySeconds: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        resources:
+{{ toYaml .Values.resources.portal | indent 10 }}
+
+      - name: openvpn
+        image: {{ .Values.image.openvpn }}
+        env:
+        - name: OPENVPN_CONFIG
+          value: /etc/config/openvpn.conf
+        - name: OPENVPN_DISABLE_FORWARDING
+          value: "True"
+        - name: OPENVPN_CLIENT_CONNECT
+          value: /usr/local/bin/client_connected.sh
+        - name: OPENVPN_CLIENT_DISCONNECT
+          value: /usr/local/bin/client_disconnect.sh
+        ports:
+        - name: openvpn
+          containerPort: {{ .Values.service.openvpn.internalPort }}
+          protocol: UDP
+        securityContext:
+          runAsUser: 0
+          allowPrivilegeEscalation: false
+          capabilities:
+            # NET_ADMIN alone covers tun setup, routing and iptables.
+            drop: ["ALL"]
+            add: ["NET_ADMIN"]
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: ca
+          mountPath: /etc/tls/ca
+          readOnly: true
+        - name: openvpn-tls
+          mountPath: /etc/tls/openvpn
+          readOnly: true
+        - name: profiles
+          mountPath: /tmp/gruff/profiles
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: {{ template "gruff.fullname" . }}
+          defaultMode: 0444
+      - name: ca
+        secret:
+          secretName: {{ .Values.ca.existingSecret }}
+          defaultMode: 0400
+      - name: openvpn-tls
+        secret:
+          secretName: {{ .Values.openvpn.existingSecret }}
+          defaultMode: 0400
+      - name: profiles
+        emptyDir: {}

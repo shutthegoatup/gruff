@@ -1,0 +1,33 @@
+# Targets the SSO proxy, never the portal: the portal binds loopback and trusts
+# whatever identity headers it is given.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "gruff.fullname" . }}-portal
+  labels:
+    app: {{ template "gruff.fullname" . }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: {{ .Values.service.sso.port }}
+    targetPort: {{ .Values.service.sso.port }}
+    protocol: TCP
+  selector:
+    app: {{ template "gruff.fullname" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "gruff.fullname" . }}
+  labels:
+    app: {{ template "gruff.fullname" . }}
+spec:
+  type: LoadBalancer
+  ports:
+  - name: openvpn
+    port: {{ .Values.service.openvpn.externalPort }}
+    targetPort: {{ .Values.service.openvpn.internalPort }}
+    protocol: UDP
+  selector:
+    app: {{ template "gruff.fullname" . }}

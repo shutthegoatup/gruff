@@ -1,3 +1,5 @@
-tmp
-helm/values.yaml.real
-main
+tmp/
+/gruff
+.cache/
+.playwright-mcp/
+deployment/helm/values.yaml.real
