@@ -54,10 +54,17 @@ func (p *Portal) handleProfile(w http.ResponseWriter, r *http.Request) {
 func (p *Portal) handleIssued(w http.ResponseWriter, r *http.Request) {
 	id := p.identify(r)
 
+	sessions, err := p.sessions.For(r.Context(), id.Username)
+	if err != nil {
+		p.log.ErrorContext(r.Context(), "read issued sessions", "user", id.Username, "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	p.render(w, r, "issued.html", struct {
 		page
 		Sessions []Session
-	}{p.page(id), p.sessions.For(id.Username)})
+	}{p.page(id), sessions})
 }
 
 func (p *Portal) handleIssue(w http.ResponseWriter, r *http.Request) {
@@ -90,14 +97,19 @@ func (p *Portal) handleIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.sessions.Add(Session{
+	// The certificate is already minted; a failed audit write is logged but
+	// must not fail the request.
+	if err := p.sessions.Add(r.Context(), Session{
 		User:      id.Username,
 		Profile:   profile.Name,
+		Kind:      KindVPN,
 		Serial:    creds.Serial,
 		ClientIP:  clientIP(r),
 		IssuedAt:  time.Now(),
 		ExpiresAt: creds.NotAfter,
-	})
+	}); err != nil {
+		p.log.ErrorContext(r.Context(), "record issued session", "user", id.Username, "error", err)
+	}
 	p.log.InfoContext(r.Context(), "issued certificate",
 		"user", id.Username, "profile", profile.Name,
 		"serial", creds.Serial, "expires", creds.NotAfter)

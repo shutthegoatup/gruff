@@ -1,14 +1,15 @@
 package portal
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sync"
 	"time"
 )
 
-// maxSessions bounds the audit list so that a long-running process cannot be
-// driven to exhaust memory by repeated issuance.
+// maxSessions bounds the in-memory audit list so that a long-running process
+// cannot be driven to exhaust memory by repeated issuance.
 const maxSessions = 1000
 
 // Kind distinguishes what an issued certificate grants.
@@ -69,31 +70,46 @@ func (s Session) ShortSerial() string {
 	return s.Serial[:shown] + "…"
 }
 
-// SessionStore is an in-memory record of issued certificates, newest first.
+// Store records issued credentials.
 //
-// It is an audit aid, not a source of truth: it does not survive a restart, and
-// nothing about certificate validity depends on it.
-type SessionStore struct {
+// This is an audit aid, not a source of truth: nothing about a certificate's
+// validity depends on it, and losing it costs visibility rather than access.
+// That is what makes the in-memory default defensible, and it is also why the
+// interface exists - a deployment that wants the record to survive a restart
+// can back it with SQLite or Postgres without any other code changing.
+//
+// Add failing must never fail an issuance: the certificate is already minted
+// by the time it is called.
+type Store interface {
+	Add(ctx context.Context, s Session) error
+	For(ctx context.Context, user string) ([]Session, error)
+}
+
+// MemoryStore is the default Store: newest first, capped, expiry-pruned, and
+// gone when the process is.
+type MemoryStore struct {
 	mu       sync.Mutex
 	sessions []Session
 }
 
+var _ Store = (*MemoryStore)(nil)
+
 // Add records an issued certificate, dropping expired and surplus entries.
-func (s *SessionStore) Add(session Session) {
+func (s *MemoryStore) Add(_ context.Context, session Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.sessions = append([]Session{session}, s.sessions...)
 	s.prune(time.Now())
+	return nil
 }
 
 // For returns the unexpired sessions belonging to user, newest first.
-func (s *SessionStore) For(user string) []Session {
+func (s *MemoryStore) For(_ context.Context, user string) ([]Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
-	s.prune(now)
+	s.prune(time.Now())
 
 	var out []Session
 	for _, session := range s.sessions {
@@ -101,11 +117,11 @@ func (s *SessionStore) For(user string) []Session {
 			out = append(out, session)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // prune drops expired entries and caps the list. Callers must hold s.mu.
-func (s *SessionStore) prune(now time.Time) {
+func (s *MemoryStore) prune(now time.Time) {
 	s.sessions = slices.DeleteFunc(s.sessions, func(session Session) bool {
 		return session.Expired(now)
 	})

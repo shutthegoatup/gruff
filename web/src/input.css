@@ -7,10 +7,16 @@
  * ../static/fonts/ rather than pulled from npm or a CDN: Gruff serves no
  * external origins, which is what lets the CSP stay at default-src 'none'.
  */
-@import "tailwindcss";
+/*
+ * source(none) disables Tailwind's automatic source detection so that the only
+ * thing scanned is the template directory below. Left on, it walks the whole
+ * repo and harvests barewords from Go code - a comment containing "contents"
+ * was enough to emit .contents into the stylesheet, which both bloats the CSS
+ * and makes the committed-output check fail on unrelated Go edits.
+ */
+@import "tailwindcss" source(none);
 @import "./basecoat/basecoat.css";
 
-/* Tailwind scans these for the utility classes it needs to emit. */
 @source "../template";
 
 /* --------------------------------------------------------------- typefaces */

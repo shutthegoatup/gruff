@@ -73,7 +73,7 @@ func (p *Portal) handleSSHIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.sessions.Add(Session{
+	if err := p.sessions.Add(r.Context(), Session{
 		User:      id.Username,
 		Profile:   profile.Name,
 		Kind:      KindSSH,
@@ -81,7 +81,9 @@ func (p *Portal) handleSSHIssue(w http.ResponseWriter, r *http.Request) {
 		ClientIP:  clientIP(r),
 		IssuedAt:  time.Now(),
 		ExpiresAt: creds.NotAfter,
-	})
+	}); err != nil {
+		p.log.ErrorContext(r.Context(), "record issued ssh session", "user", id.Username, "error", err)
+	}
 	p.log.InfoContext(r.Context(), "issued ssh certificate",
 		"user", id.Username, "profile", profile.Name,
 		"serial", creds.Serial, "principals", creds.Principals, "expires", creds.NotAfter)

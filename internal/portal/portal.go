@@ -35,7 +35,7 @@ type Portal struct {
 	ca        *pki.CA
 	sshCA     *sshca.CA
 	log       *slog.Logger
-	sessions  SessionStore
+	sessions  Store
 	templates map[string]*template.Template
 }
 
@@ -46,7 +46,7 @@ func New(cfg *config.Config, ca *pki.CA, sshCA *sshca.CA, log *slog.Logger) (*Po
 	if err != nil {
 		return nil, err
 	}
-	return &Portal{cfg: cfg, ca: ca, sshCA: sshCA, log: log, templates: templates}, nil
+	return &Portal{cfg: cfg, ca: ca, sshCA: sshCA, log: log, sessions: &MemoryStore{}, templates: templates}, nil
 }
 
 // parseTemplates builds one template set per page. Each page defines its own
