@@ -41,6 +41,17 @@ func Write(dir string, profiles []config.Profile) error {
 			return err
 		}
 	}
+
+	names := make([]string, 0, len(profiles))
+	for _, p := range profiles {
+		names = append(names, p.Name)
+	}
+	connect := filepath.Join(rulesDir, "connect.sh")
+	if err := writeExecutable(connect, func(w io.Writer) error {
+		return WriteConnectScript(w, names)
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -86,8 +97,20 @@ func WriteRules(w io.Writer, p config.Profile) error {
 	return err
 }
 
+// writeExecutable is writeFile for something OpenVPN has to run.
+func writeExecutable(path string, render func(io.Writer) error) error {
+	if err := writeFileMode(path, render, 0o750); err != nil {
+		return err
+	}
+	return nil
+}
+
 func writeFile(path string, render func(io.Writer) error) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fileMode)
+	return writeFileMode(path, render, fileMode)
+}
+
+func writeFileMode(path string, render func(io.Writer) error, mode os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", path, err)
 	}
