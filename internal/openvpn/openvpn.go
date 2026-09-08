@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/shutthegoatup/gruff/internal/atomicfile"
 	"github.com/shutthegoatup/gruff/internal/config"
 )
 
@@ -109,20 +110,10 @@ func writeFile(path string, render func(io.Writer) error) error {
 	return writeFileMode(path, render, fileMode)
 }
 
+// writeFileMode replaces the file rather than truncating it, because the
+// OpenVPN server reads these while Gruff is writing them.
 func writeFileMode(path string, render func(io.Writer) error, mode os.FileMode) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return fmt.Errorf("create %s: %w", path, err)
-	}
-	defer f.Close()
-
-	if err := render(f); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	if err := f.Sync(); err != nil {
-		return fmt.Errorf("sync %s: %w", path, err)
-	}
-	return f.Close()
+	return atomicfile.Write(path, mode, render)
 }
 
 // safeJoin accepts only a single, ordinary path element, so that a profile name

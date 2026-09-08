@@ -2,8 +2,11 @@ package portal
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -70,4 +73,68 @@ func readFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(b)
+}
+
+// The hourly refresher and a revocation both publish, so two writers can hit
+// crl.pem at once - and OpenVPN re-reads it on every connection. A reader must
+// always find a CRL it can parse, or a client that should have connected is
+// refused for the width of a write.
+func TestPublishedCRLIsAlwaysParseable(t *testing.T) {
+	t.Parallel()
+
+	p, _ := buildTestPortal(t, 0)
+	dir := t.TempDir()
+	p.cfg.ConfigdirEnabled = true
+	p.cfg.ConfigdirPath = dir
+
+	ctx := t.Context()
+	if err := p.PublishRevocations(ctx); err != nil {
+		t.Fatalf("PublishRevocations: %v", err)
+	}
+	crl := filepath.Join(dir, "crl.pem")
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					if err := p.publishRevocations(ctx); err != nil {
+						return
+					}
+				}
+			}
+		}()
+	}
+
+	// Stands in for OpenVPN checking a connecting client against the list.
+	var reads int
+	for range 500 {
+		body, err := os.ReadFile(crl)
+		if err != nil {
+			t.Errorf("the CRL disappeared mid-rewrite: %v", err)
+			break
+		}
+		block, _ := pem.Decode(body)
+		if block == nil {
+			t.Errorf("read %d: not PEM at all, %d bytes", reads, len(body))
+			break
+		}
+		if _, err := x509.ParseRevocationList(block.Bytes); err != nil {
+			t.Errorf("read %d: OpenVPN would reject this list: %v", reads, err)
+			break
+		}
+		reads++
+	}
+	close(stop)
+	wg.Wait()
+
+	if reads == 0 {
+		t.Fatal("never managed to read the list")
+	}
 }
