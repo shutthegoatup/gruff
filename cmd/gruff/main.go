@@ -95,6 +95,10 @@ func run() error {
 		return err
 	}
 
+	if err := p.PublishRevocations(context.Background()); err != nil {
+		return fmt.Errorf("publish revocation list: %w", err)
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           p.Handler(),
