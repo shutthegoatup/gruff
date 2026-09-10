@@ -37,7 +37,10 @@ func (ca *CA) IssueServer(commonName string, hosts []string) (Credentials, error
 	}
 
 	now := time.Now().UTC().Truncate(time.Second)
-	notAfter := now.Add(ServerValidity)
+	notAfter, err := ca.boundedExpiry(now, ServerValidity)
+	if err != nil {
+		return Credentials{}, err
+	}
 
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
