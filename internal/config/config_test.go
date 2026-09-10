@@ -311,6 +311,30 @@ profiles:
 template: "x"`,
 		want: "requires configdir-path",
 	}, {
+		name: "local-roles with an empty username",
+		yaml: `
+auth:
+  local-roles:
+    "": [r]
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+template: "x"`,
+		want: "empty username",
+	}, {
+		name: "local-roles with an empty role",
+		yaml: `
+auth:
+  local-roles:
+    alice: [""]
+profiles:
+  - name: p
+    max-session: 1h
+    roles: [r]
+template: "x"`,
+		want: "empty role",
+	}, {
 		name: "unknown field is a typo, not a comment",
 		yaml: `
 listem: :9000

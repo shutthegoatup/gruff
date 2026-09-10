@@ -42,6 +42,16 @@ auth:
   #   head -c 32 /dev/urandom | base64 > /etc/gruff/session.key
   # session-key-file: /etc/gruff/session.key
 
+  # Assign roles locally by username, on top of whatever the provider supplied
+  # (its roles claim, or the proxy's roles header). Use this when the
+  # OIDC/SSO provider isn't under your control and its claims carry no groups.
+  # Roles are unioned, so provider claims still count.
+  # local-roles:
+  #   alice:
+  #     - vpn-livedata
+  #   bob:
+  #     - ssh-bastion
+
 # Gruff holds no session in trusted-header mode, so it cannot log anyone out.
 # Set this only to a URL that actually ends the session - your proxy's sign-out
 # endpoint, not the IdP's - otherwise leave it unset and no button is shown.
