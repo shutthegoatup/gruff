@@ -22,26 +22,51 @@ type identity struct {
 // when Gruff is not the authenticator. No valid session yields the zero
 // identity, which grants nothing.
 func (p *Portal) identify(r *http.Request) identity {
+	var id identity
 	if p.oidc == nil {
-		roles := config.Roles(r.Header.Get(p.cfg.RolesHeader))
-		return identity{
+		id = identity{
 			Username: r.Header.Get(p.cfg.UsernameHeader),
 			Fullname: r.Header.Get(p.cfg.FullnameHeader),
-			Roles:    roles,
-			Admin:    p.cfg.IsAdmin(roles),
+			Roles:    config.Roles(r.Header.Get(p.cfg.RolesHeader)),
+		}
+	} else {
+		user, err := p.sessionCodec.Open(r)
+		if err != nil {
+			return identity{}
+		}
+		id = identity{
+			Username: user.Username,
+			Fullname: user.Fullname,
+			Roles:    user.Roles,
 		}
 	}
 
-	user, err := p.sessionCodec.Open(r)
-	if err != nil {
-		return identity{}
+	// Grant locally-assigned roles on top of whatever the provider supplied,
+	// so an operator can profile access without controlling the SSO provider's
+	// claims or the proxy's roles header.
+	id.Roles = mergeRoles(id.Roles, p.cfg.Auth.LocalRoles[id.Username])
+	id.Admin = p.cfg.IsAdmin(id.Roles)
+	return id
+}
+
+// mergeRoles returns the de-duplicated union of the supplied role sets, in
+// order of first appearance (provider roles first, then local roles).
+func mergeRoles(provider, local []string) []string {
+	shown := make(map[string]bool, len(provider)+len(local))
+	out := make([]string, 0, len(provider)+len(local))
+	for _, r := range provider {
+		if !shown[r] {
+			shown[r] = true
+			out = append(out, r)
+		}
 	}
-	return identity{
-		Username: user.Username,
-		Fullname: user.Fullname,
-		Roles:    user.Roles,
-		Admin:    p.cfg.IsAdmin(user.Roles),
+	for _, r := range local {
+		if !shown[r] {
+			shown[r] = true
+			out = append(out, r)
+		}
 	}
+	return out
 }
 
 // requireSession redirects an unauthenticated caller to the provider. In proxy

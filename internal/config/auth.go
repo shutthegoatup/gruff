@@ -56,6 +56,11 @@ type Auth struct {
 	// by something Gruff cannot see.
 	InsecureTrustedHeaders bool `yaml:"insecure-trusted-headers"`
 
+	// LocalRoles grants roles by username, on top of whatever the SSO provider
+	// supplied (its roles claim, or the proxy's roles header). Useful when the
+	// provider is not under our control and its claims carry no groups.
+	LocalRoles map[string][]string `yaml:"local-roles"`
+
 	sessionKey []byte
 }
 
@@ -102,6 +107,17 @@ func contains(haystack []string, needle string) bool {
 
 func (a *Auth) validate() error {
 	a.Mode = AuthMode(cmpOr(string(a.Mode), string(AuthProxy)))
+
+	for user, roles := range a.LocalRoles {
+		if user == "" {
+			return errors.New("local-roles: empty username")
+		}
+		for _, role := range roles {
+			if role == "" {
+				return fmt.Errorf("local-roles[%q]: empty role", user)
+			}
+		}
+	}
 
 	switch a.Mode {
 	case AuthProxy:

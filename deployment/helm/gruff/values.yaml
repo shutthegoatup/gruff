@@ -115,6 +115,11 @@ config: |
       username-claim: preferred_username
       session-key-file: /etc/gruff/auth/session.key
       session-lifetime: 8h
+      # Assign additional roles locally by username when the provider's claims
+      # don't carry the groups you key access on. Roles are unioned.
+      # local-roles:
+      #   alice:
+      #     - vpn-livedata
 
     ca-certificate-file: /etc/tls/ca/cert.pem
     ca-private-file: /etc/tls/ca/key.pem
