@@ -19,7 +19,7 @@ func issuedHandler(w http.ResponseWriter, r *http.Request) {
 		HelpURL   string
 	}
 	wd := webData{
-		Profiles:  s.Items,
+		Profiles:  s.ForUser(r.Header.Get(c.UsernameHeader)),
 		Title:     c.Banner,
 		Brand:     c.Banner,
 		Username:  r.Header.Get(c.FullnameHeader),
@@ -42,7 +42,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	profile, _ := c.getProfile(vars["profile"])
 	type webData struct {
-		Profiles    []session
 		Title       string
 		Brand       string
 		Username    string
@@ -55,7 +54,6 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wd := webData{
-		Profiles:    s.Items,
 		Title:       c.Banner,
 		Brand:       c.Banner,
 		Username:    r.Header.Get(c.FullnameHeader),
@@ -136,7 +134,6 @@ func profilesHandler(w http.ResponseWriter, r *http.Request) {
 		Profiles  []profile
 		Title     string
 		Username  string
-		Sessions  sessions
 		Brand     string
 		LogoutURL string
 		HelpURL   string
@@ -145,7 +142,6 @@ func profilesHandler(w http.ResponseWriter, r *http.Request) {
 		Profiles:  c.Profiles,
 		Title:     c.Banner,
 		Username:  r.Header.Get(c.FullnameHeader),
-		Sessions:  s,
 		Brand:     c.Banner,
 		LogoutURL: c.LogoutURL,
 		HelpURL:   c.HelpURL,

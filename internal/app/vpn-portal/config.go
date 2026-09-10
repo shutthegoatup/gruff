@@ -40,7 +40,7 @@ type conf struct {
 	RolesHeader       string    `yaml:"roles-header"`
 	CACertificateFile string    `yaml:"ca-certificate-file"`
 	CAPrivateFile     string    `yaml:"ca-private-file"`
-	ConfigdirEnabled  string    `yaml:"configdir-enabled"`
+	ConfigdirEnabled  bool      `yaml:"configdir-enabled"`
 	ConfigdirPath     string    `yaml:"configdir-path"`
 	RequiredRole      []string  `yaml:"required-roles"`
 	Profiles          []profile `yaml:"profiles"`
@@ -113,13 +113,12 @@ func (c *conf) validate() error {
 }
 
 func (c *conf) writeRules() error {
-	if c.ConfigdirEnabled != "true" { 
-		var err error
-		return err
+	if !c.ConfigdirEnabled {
+		return nil
 	}
-	//on startup write rules
-	err := os.MkdirAll(c.ConfigdirPath+"/rules", 755)
-	if err != nil {
+	// On startup, write one routes file and one rules script per profile into
+	// the shared configdir that the OpenVPN server reads on client connect.
+	if err := os.MkdirAll(c.ConfigdirPath+"/rules", 0755); err != nil {
 		return err
 	}
 	for _, profile := range c.Profiles {
@@ -127,38 +126,51 @@ func (c *conf) writeRules() error {
 		if err != nil {
 			return err
 		}
-		defer routesFile.Close()
 		rulesFile, err := os.Create(c.ConfigdirPath + "/rules/" + profile.Name)
 		if err != nil {
+			routesFile.Close()
 			return err
 		}
-		defer rulesFile.Close()
+
 		for _, route := range profile.Routes {
-			s := "push \"route " + route.Route + " " + route.Netmask + "\"\n"
-			_, err := routesFile.WriteString(s)
-			if err != nil {
+			if _, err := routesFile.WriteString("push \"route " + route.Route + " " + route.Netmask + "\"\n"); err != nil {
+				routesFile.Close()
+				rulesFile.Close()
 				return err
 			}
 		}
-		rulesFile.WriteString("#!/usr/bin/env bash\n")
-		rulesFile.WriteString("set -e\n")
-		rulesFile.WriteString("if [[ -z \"${CHAIN_NAME}\" ]]; then\n")
-		rulesFile.WriteString("	echo \"you have not specified a CHAIN_NAME to add the rules\"\n")
-		rulesFile.WriteString("	exit 1\n")
-		rulesFile.WriteString("fi\n")
+
+		if _, err := rulesFile.WriteString("#!/usr/bin/env bash\nset -e\nif [[ -z \"${CHAIN_NAME}\" ]]; then\n\techo \"you have not specified a CHAIN_NAME to add the rules\"\n\texit 1\nfi\n"); err != nil {
+			routesFile.Close()
+			rulesFile.Close()
+			return err
+		}
 		for _, rule := range profile.Rules {
-			port := ""
+			var line strings.Builder
+			line.WriteString("iptables -A ${CHAIN_NAME} -p " + rule.Protocol + " --destination " + rule.Destination)
 			if rule.Port != 0 {
-				port += " --dport " + strconv.Itoa(rule.Port)
+				line.WriteString(" --dport " + strconv.Itoa(rule.Port))
 			}
-			s := "iptables -A ${CHAIN_NAME} -p " + rule.Protocol + " --destination " + rule.Destination + port + " -j " + rule.Action + "\n"
-			_, err := rulesFile.WriteString(s)
-			if err != nil {
-				panic(err)
+			line.WriteString(" -j " + rule.Action + "\n")
+			if _, err := rulesFile.WriteString(line.String()); err != nil {
+				routesFile.Close()
+				rulesFile.Close()
+				return err
 			}
 		}
-		routesFile.Sync()
-		rulesFile.Sync()
+
+		if err := routesFile.Sync(); err != nil {
+			routesFile.Close()
+			rulesFile.Close()
+			return err
+		}
+		if err := rulesFile.Sync(); err != nil {
+			routesFile.Close()
+			rulesFile.Close()
+			return err
+		}
+		routesFile.Close()
+		rulesFile.Close()
 	}
-	return err
+	return nil
 }

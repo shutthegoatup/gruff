@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/secureweb/vpn-portal/internal/pkg/cli"
 	"github.com/secureweb/vpn-portal/internal/pkg/pki"
 )
 
@@ -16,13 +15,14 @@ var ca pki.CertificateAuthority
 // Run starts the app
 func Run() {
 
-	cli.InitSignalHandler()
 	setupVars()
 
 	c.getConf(config)
 	c.validate()
 
-	c.writeRules()
+	if err := c.writeRules(); err != nil {
+		log.Fatal(err)
+	}
 
 	if c.CAPrivateFile == "" && c.CACertificateFile == "" {
 		log.Printf("Config Warning: No CA specified, creating one...")
@@ -34,7 +34,7 @@ func Run() {
 	} else {
 
 		if c.CAPrivateFile == "" {
-		    log.Fatal("Config Error: CAPrivateFile isn't set but CACertificateFile is.  Both must be nil to auto-generate CA.")
+			log.Fatal("Config Error: CAPrivateFile isn't set but CACertificateFile is.  Both must be nil to auto-generate CA.")
 		}
 		if c.CACertificateFile == "" {
 			log.Fatal("Config Error: CACertificateFile isn't set but CAPrivateFile is.  Both must be nil to auto-generate CA.")
@@ -42,7 +42,7 @@ func Run() {
 
 		ca.LoadCertificateAuthority(c.CAPrivateFile, c.CACertificateFile)
 	}
-	
+
 	srv := &http.Server{
 		Handler:      router(),
 		Addr:         c.Listen,

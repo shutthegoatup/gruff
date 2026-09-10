@@ -12,6 +12,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"time"
 )
 
@@ -152,6 +153,15 @@ func (ca *CertificateAuthority) GenerateCertificate(issueTime time.Time, expireT
 
 
 func (ca *CertificateAuthority) OutputCertificates(path string) error {
+
+	// The CA cert/key are written into path/ca and the server cert/key into
+	// path/openvpn; make sure those directories exist before writing.
+	if err := os.MkdirAll(path+"/ca", 0755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(path+"/openvpn", 0755); err != nil {
+		return err
+	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
